@@ -102,7 +102,7 @@ inference_args = argparse.Namespace(
     device='cuda',
     temperature=0,
     max_new_tokens=512,
-    model_path='/content/MyLLaVA/LLaVA/checkpoints/llava-v1.5-7b-pretrain'
+    model_path='./checkpoints/llava-v1.5-7b-pretrain'
 )
 
 # Disable torch init to save memory
@@ -118,7 +118,7 @@ tokenizer, model, image_processor, context_len = load_pretrained_model(
     device=inference_args.device
 )
 
-image_file = ''
+image_file = 'Sample.png'
 question = "How many circles in the picture?"
 
 outputs = run_inference(model, tokenizer, image_processor, image_file, question, inference_args)

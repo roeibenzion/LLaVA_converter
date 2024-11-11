@@ -95,7 +95,11 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 model = LlavaMptForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
             else:
                 tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
-                cfg_pretrained = AutoConfig.from_pretrained(model_path)
+                if model_base == 'lmsys/vicuna-7b-v1.5':
+                    from llava.model.language_model.llava_llama import LlavaConfig
+                    cfg_pretrained = LlavaConfig.from_pretrained('liuhaotian/llava-v1.5-mlp2x-336px-pretrain-vicuna-7b-v1.5')
+                else:
+                    cfg_pretrained = AutoConfig.from_pretrained(model_path)
                 model = LlavaLlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
 
             mm_projector_weights = torch.load(os.path.join(model_path, 'mm_projector.bin'), map_location='cpu')
@@ -154,7 +158,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
 
         vision_tower = model.get_vision_tower()
         if not vision_tower.is_loaded:
-            vision_tower.load_model(device_map=device_map)
+            vision_tower.load_model(device_map='cuda' if torch.cuda.is_available() else 'cpu')
         if device_map != 'auto':
             vision_tower.to(device=device_map, dtype=torch.float16)
         image_processor = vision_tower.image_processor
