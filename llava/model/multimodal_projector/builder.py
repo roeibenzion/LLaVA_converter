@@ -2,7 +2,20 @@ import torch
 import torch.nn as nn
 import re
 
+class MMAttn(nn.Module):
+    def __init__(self, hidden_size, projector, num_heads=8, depth=1):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(hidden_size, num_heads=num_heads, batch_first=True)
+        self.projector = projector
+        self.depth = depth
 
+    def forward(self, x):
+        # apply attention with the input x and the projected x
+        for _ in range(self.depth):
+            x = x + self.attn(self.projector(x), x, x)[0]
+        return x
+
+        
 class PerceiverResampler(nn.Module):
     def __init__(self, hidden_size, num_queries=64, num_layers=2, from_pretrained=None):
         super(PerceiverResampler, self).__init__()
@@ -117,6 +130,12 @@ def build_vision_projector(config, delay_load=False, **kwargs):
 
     if projector_type == 'identity':
         return IdentityMap()
+    
+    if projector_type == 'attn':
+        return MMAttn(config.hidden_size, 
+                      load_pretrained_projector(get_projector_from_7b(config, ext=False)), 
+                      num_heads=kwargs.get('num_heads', 8), depth=kwargs.get('depth', 1))
+    
     if projector_type == 'Perceiver_pretrained':
         # take the pretrained projector and add perciver to refine representation
         projector = load_pretrained_projector(get_projector_from_7b(config, ext=False), strict=True)
