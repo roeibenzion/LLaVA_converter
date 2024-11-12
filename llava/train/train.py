@@ -110,6 +110,14 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_bias: str = "none"
     mm_projector_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
+    reconstruction_head: bool = field(
+        default=False,
+        metadata={"help": "Use reconstruction head or not"}
+    )
+    lambd: float = field(
+        default=0.0,
+        metadata={"help": "Lambda value for loss balancing"}
+    )
 
 
 def maybe_zero_3(param, ignore_status=False, name=None):
