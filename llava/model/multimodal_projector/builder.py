@@ -5,15 +5,22 @@ import re
 class MMAttn(nn.Module):
     def __init__(self, hidden_size, projector, num_heads=8, depth=1):
         super().__init__()
+        self.hidden = hidden_size
         self.attn = nn.MultiheadAttention(hidden_size, num_heads=num_heads, batch_first=True)
         self.projector = projector
         self.depth = depth
+        self.inp_transform = nn.Linear(1024, hidden_size)
 
     def forward(self, x):
-        # apply attention with the input x and the projected x
         for _ in range(self.depth):
-            x = x + self.attn(self.projector(x), x, x)[0]
-        return x
+            # Projector output as the query, and `x` as the key and value
+            query = self.projector(x)
+            print(x.size(), query.size(),self.hidden)
+            x = self.inp_transform(x)
+            attended_q = self.attn(x, query, query)[0]
+            query  = query  + attended_q  # Residual connection to retain the original `x`
+        return query
+
 
         
 class PerceiverResampler(nn.Module):
