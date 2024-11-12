@@ -36,11 +36,15 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
 
     def __init__(self, config: LlamaConfig):
         super(LlavaLlamaModel, self).__init__(config)
+        # TODO: make it modular
+        self.reconstruction_head = nn.Linear(config.hidden_size, 1024)
+        '''
         # ADDITION: reconstruction head
         if hasattr(config, 'reconstruction_head'):
             self.reconstruction_head = nn.Linear(config.hidden_size, 1024)
         else:
             self.reconstruction_head = None
+        '''
 
 class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     config_class = LlavaConfig
@@ -51,8 +55,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.pretraining_tp = config.pretraining_tp
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        if hasattr(config, 'lambd'):
-            self.lambd = config.lambd
+        # TODO: make it modular
+        self.lambd = 0.05
         # Initialize weights and apply final processing
         self.post_init()
 
