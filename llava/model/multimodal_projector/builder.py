@@ -93,10 +93,18 @@ def get_projector_from_7b(config, ext=True, hidden_size=4096):
     projector = nn.Sequential(*modules)
     return projector
 
-def load_pretrained_projector(projector, strict = False, path = './checkpoints/llava-v1.5-7b-pretrain/mm_projector.bin',):
+def load_pretrained_projector(projector, strict=False, path='./checkpoints/llava-v1.5-7b-pretrain/mm_projector.bin'):
     # Load pretrained state dict
     pretrained_state_dict = torch.load(path, map_location="cpu")  # Adjust map_location as needed
-    projector.load_state_dict(pretrained_state_dict, strict=strict)  # Allow partial loading for new layers
+
+    # Strip "model.mm_projector" prefix from keys if present
+    updated_state_dict = {}
+    for key, value in pretrained_state_dict.items():
+        new_key = key.replace("model.mm_projector.", "")  # Remove prefix
+        updated_state_dict[new_key] = value
+
+    # Load the modified state dict into the projector
+    projector.load_state_dict(updated_state_dict, strict=strict)  # Allow partial loading for new layers
     return projector
 
 def build_vision_projector(config, delay_load=False, **kwargs):
