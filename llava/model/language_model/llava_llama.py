@@ -64,7 +64,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         return self.model
     
     def get_image_features_and_multimodal(self, images):
-        return self.get_model.encode_images(images), self.get_model().encode_images_no_proj(images)
+        return self.get_model().encode_images(images), self.get_model().encode_images_no_proj(images)
     
     def forward(
         self,
