@@ -64,7 +64,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         return self.model
     
     def get_image_features_and_multimodal(self, images):
-        return self.get_model().encode_images(images), self.get_model().encode_images_no_proj(images)
+        return self.encode_images(images), self.encode_images_no_proj(images)
     
     def forward(
         self,
@@ -115,7 +115,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
         # Compute the supplementary loss only if labels are provided
         if labels is not None and self.get_model().reconstruction_head is not None and not (type(images) is list or images.ndim == 5):
-            print("Computing supplementary loss")
             # Obtain image features and reconstructed features
             x, y = self.get_image_features_and_multimodal(images)
             x = self.get_model().reconstruction_head(x)
@@ -130,6 +129,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 output.loss = output.loss + sup_loss * self.lambd
             else:
                 output.loss = sup_loss * self.lambd
+            print(f"Computing supplementary loss: {sup_loss} out of {output.loss}")
 
             # Optionally, add reconstructed features to output
             output.reconstructed_features = x
