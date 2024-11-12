@@ -59,7 +59,9 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     def get_model(self):
         return self.model
     
-    '''
+    def get_image_features_and_multimodal(self, images):
+        return self.get_model.encode_images(images), self.get_model().encode_images_no_proj(images)
+    
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -93,73 +95,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 images,
                 image_sizes
             )
-
-        return super().forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            labels=labels,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict
-        )
-    '''
-    def get_image_features(self, inputs_embeds):
-        # Figure out later
-        pass
-    def reconstruct_image_features(self, image_features):
-        # Figure out later
-        pass
-    def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        images: Optional[torch.FloatTensor] = None,
-        image_sizes: Optional[List[List[int]]] = None,
-        return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, CausalLMOutputWithPast]:
-
-        if inputs_embeds is None:
-            (
-                input_ids,
-                position_ids,
-                attention_mask,
-                past_key_values,
-                inputs_embeds,
-                labels
-            ) = self.prepare_inputs_labels_for_multimodal(
-                input_ids,
-                position_ids,
-                attention_mask,
-                past_key_values,
-                labels,
-                images,
-                image_sizes
-            )
-
-        output = super().forward(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            labels=labels,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict
-        
-        )
         # Forward pass through the main model
         output = super().forward(
             input_ids=input_ids,
@@ -175,15 +110,16 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         )
 
         # Compute the supplementary loss only if labels are provided
-        if labels is not None and self.get_model().reconstruction_head is not None:
+        if labels is not None and self.get_model().reconstruction_head is not None and not (type(images) is list or images.ndim == 5):
+            print("Computing supplementary loss")
             # Obtain image features and reconstructed features
-            image_features = self.get_image_features(inputs_embeds)
-            reconstructed_features = self.get_model().reconstruction_head(image_features)
+            x, y = self.get_image_features(images)
+            x = self.get_model().reconstruction_head(x)
 
             # Compute the supplementary loss term
             loss_fn = nn.MSELoss()
-            reconstruction_targets = image_features.detach()  # or your actual targets
-            sup_loss = loss_fn(reconstructed_features, reconstruction_targets)
+            y = y.detach() 
+            sup_loss = loss_fn(x, y)
 
             # Add the supplementary loss to the main loss
             if output.loss is not None:
@@ -192,7 +128,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 output.loss = sup_loss * self.lambd
 
             # Optionally, add reconstructed features to output
-            output.reconstructed_features = reconstructed_features
+            output.reconstructed_features = x
 
         return output
 
