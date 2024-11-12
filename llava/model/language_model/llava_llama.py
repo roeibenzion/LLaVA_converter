@@ -117,7 +117,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         if labels is not None and self.get_model().reconstruction_head is not None and not (type(images) is list or images.ndim == 5):
             print("Computing supplementary loss")
             # Obtain image features and reconstructed features
-            x, y = self.get_image_features(images)
+            x, y = self.get_image_features_and_multimodal(images)
             x = self.get_model().reconstruction_head(x)
 
             # Compute the supplementary loss term
