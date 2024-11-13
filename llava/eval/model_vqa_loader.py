@@ -1,3 +1,6 @@
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import argparse
 import torch
 import os
@@ -39,7 +42,8 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         line = self.questions[index]
         image_file = line["image"]
-        qs = line["text"]
+        #qs = line["text"]
+        qs = line["question"]
         if self.model_config.mm_use_im_start_end:
             qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
         else:
@@ -83,7 +87,9 @@ def eval_model(args):
     model_name = get_model_name_from_path(model_path)
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
 
-    questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
+    #questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
+    with open(os.path.expanduser(args.question_file), 'r') as f:
+        questions = json.load(f)
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     answers_file = os.path.expanduser(args.answers_file)
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
@@ -95,13 +101,19 @@ def eval_model(args):
 
     data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
 
-    for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
-        idx = line["question_id"]
-        cur_prompt = line["text"]
+    model.to('cuda')
+    model = model.half()
+    model.eval()
+    with torch.inference_mode():
+        for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
+            #idx = line["question_id"]
+            idx = (line['image'].strip('.jpg')).split('_')[-1]
+            #cur_prompt = line["text"]
+            cur_prompt = line["question"]
 
-        input_ids = input_ids.to(device='cuda', non_blocking=True)
+            input_ids = input_ids.to(device='cuda', non_blocking=True)
 
-        with torch.inference_mode():
+            
             output_ids = model.generate(
                 input_ids,
                 images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
@@ -112,18 +124,18 @@ def eval_model(args):
                 num_beams=args.num_beams,
                 max_new_tokens=args.max_new_tokens,
                 use_cache=True)
-
-        outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-
-        ans_id = shortuuid.uuid()
-        ans_file.write(json.dumps({"question_id": idx,
-                                   "prompt": cur_prompt,
-                                   "text": outputs,
-                                   "answer_id": ans_id,
-                                   "model_id": model_name,
-                                   "metadata": {}}) + "\n")
-        # ans_file.flush()
-    ans_file.close()
+            outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+            ans_id = shortuuid.uuid()
+            ans_file.write(json.dumps({"question_id": idx,
+                                    "prompt": cur_prompt,
+                                    "text": outputs,
+                                    "answer_id": ans_id,
+                                    "model_id": model_name,
+                                    "metadata": {}}) + "\n")
+            del input_ids, image_tensor, output_ids, outputs
+            torch.cuda.empty_cache()
+            # ans_file.flush()
+        ans_file.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
