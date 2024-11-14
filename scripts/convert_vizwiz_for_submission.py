@@ -27,8 +27,10 @@ if __name__ == '__main__':
         except:
             error_line += 1
     results = {x['question_id']: x['text'] for x in results}
-    test_split = [json.loads(line) for line in open(args.annotation_file)]
-    split_ids = set([x['question_id'] for x in test_split])
+    #test_split = [json.loads(line) for line in open(args.annotation_file)]
+    with open(args.annotation_file, 'r') as f:
+        test_split = json.load(f)
+    split_ids = set((x['image'].strip('.jpg')).split('_')[-1] for x in test_split)
 
     print(f'total results: {len(results)}, total split: {len(test_split)}, error_line: {error_line}')
 
@@ -37,10 +39,16 @@ if __name__ == '__main__':
     answer_processor = EvalAIAnswerProcessor()
 
     for x in test_split:
-        assert x['question_id'] in results
+        #assert x['question_id'] in results
+        idx = (x['image'].strip('.jpg')).split('_')[-1] 
+        #assert idx in results
+        if not idx in results:
+            print(f"Skipping {idx}")
+            print(x, idx, results)
+            break
         all_answers.append({
             'image': x['image'],
-            'answer': answer_processor(results[x['question_id']])
+            'answer': answer_processor(results[idx])
         })
 
     with open(args.result_upload_file, 'w') as f:

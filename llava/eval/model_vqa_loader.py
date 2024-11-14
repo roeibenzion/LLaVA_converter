@@ -102,8 +102,9 @@ def eval_model(args):
         args.conv_mode = args.conv_mode + '_mmtag'
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
-    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config, batch_size=1, num_workers=4)
-
+    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config, batch_size=1, num_workers=4, q_limit=args.q_limit)
+    if args.q_limit > 0:
+        questions = questions[:args.q_limit]
     model.to('cuda')
     model = model.half()
     model.eval()
