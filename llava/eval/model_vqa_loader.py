@@ -77,7 +77,7 @@ def create_data_loader(questions, image_folder, tokenizer, image_processor, mode
     assert batch_size == 1, "batch_size must be 1"
     dataset = CustomDataset(questions, image_folder, tokenizer, image_processor, model_config)
     if q_limit > 0:
-        data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, collate_fn=collate_fn, drop_last=True, num_workers=num_workers, sampler=torch.utils.data.SubsetRandomSampler(range(q_limit)))
+        data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, collate_fn=collate_fn, drop_last=True, sampler=torch.utils.data.SubsetRandomSampler(range(q_limit)))
     else:
         data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, collate_fn=collate_fn)
     return data_loader
