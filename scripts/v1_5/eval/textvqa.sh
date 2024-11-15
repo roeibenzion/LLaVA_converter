@@ -2,7 +2,7 @@
 
 python -m llava.eval.model_vqa_loader \
     --model-path /content/LLaVA_converter/checkpoints/checkpoint-500 \
-    --model-base lmsys/vicuna-7b-v1.5
+    --model-base lmsys/vicuna-7b-v1.5 \
     --question-file ./playground/data/eval/textvqa/test.json \
     --image-folder ./playground/data/eval/textvqa/train_images \
     --answers-file ./playground/data/eval/textvqa/answers/llava-v1.5-7b.jsonl \
