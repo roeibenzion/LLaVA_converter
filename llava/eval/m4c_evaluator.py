@@ -244,14 +244,26 @@ class TextVQAAccuracyEvaluator:
             unique_answer_scores[unique_answer] = sum(accs) / len(accs)
 
         return unique_answer_scores
+    
+    def custom_search(self, pred, gt, scores):
+        '''
+        Searches the highest score in the gt answers from all sequences in pred
+        '''
+        max_score = 0.0
+        for l in range(len(pred), 0, -1):
+            for i in range(len(pred) - l + 1):
+                seq = ' '.join(pred[i:i+l])
+                if seq in gt:
+                    max_score = max(max_score, scores[gt.index(seq)])
+        return max_score
 
     def eval_pred_list(self, pred_list):
         pred_scores = []
         for entry in tqdm(pred_list):
             pred_answer = self.answer_processor(entry["pred_answer"])
             unique_answer_scores = self._compute_answer_scores(entry["gt_answers"])
-            print(f'possible answers: {unique_answer_scores}, pred: {pred_answer}')
-            score = unique_answer_scores.get(pred_answer, 0.0)
+            #score = unique_answer_scores.get(pred_answer, 0.0)
+            score = self.custom_search(pred_answer.split(), entry["gt_answers"], list(unique_answer_scores.values()))
             pred_scores.append(score)
 
         accuracy = sum(pred_scores) / len(pred_scores)
