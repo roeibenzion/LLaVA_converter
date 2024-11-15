@@ -254,7 +254,7 @@ class TextVQAAccuracyEvaluator:
             for i in range(len(pred) - l + 1):
                 seq = ' '.join(pred[i:i+l])
                 if seq in gt:
-                    max_score = max(max_score, scores[gt.index(seq)])
+                    max_score = max(max_score, scores.get(seq, 0.0))
         return max_score
 
     def eval_pred_list(self, pred_list):
@@ -263,7 +263,7 @@ class TextVQAAccuracyEvaluator:
             pred_answer = self.answer_processor(entry["pred_answer"])
             unique_answer_scores = self._compute_answer_scores(entry["gt_answers"])
             #score = unique_answer_scores.get(pred_answer, 0.0)
-            score = self.custom_search(pred_answer.split(), entry["gt_answers"], list(unique_answer_scores.values()))
+            score = self.custom_search(pred_answer.split(), entry["gt_answers"], unique_answer_scores)
             pred_scores.append(score)
 
         accuracy = sum(pred_scores) / len(pred_scores)
