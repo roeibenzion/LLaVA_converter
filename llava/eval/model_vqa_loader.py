@@ -42,6 +42,8 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         line = self.questions[index]
         image_file = line["image"]
+        if not image_file.endswith('.jpg'):
+            image_file += '.jpg'
         #qs = line["text"]
         qs = line["question"]
         if self.model_config.mm_use_im_start_end:
@@ -105,13 +107,19 @@ def eval_model(args):
     data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config, batch_size=1, num_workers=4, q_limit=args.q_limit)
     if args.q_limit > 0:
         questions = questions[:args.q_limit]
+    use_idx = False
+    if not ('image_id' in questions[0]):
+        use_idx = True
     model.to('cuda')
     model = model.half()
     model.eval()
     with torch.inference_mode():
         for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
             #idx = line["question_id"]
-            idx = (line['image'].strip('.jpg')).split('_')[-1]
+            if use_idx:
+                idx = (line['image'].strip('.jpg')).split('_')[-1]
+            else:    
+                idx = line["image_id"]
             #cur_prompt = line["text"]
             cur_prompt = line["question"]
 
