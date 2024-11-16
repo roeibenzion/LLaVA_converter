@@ -37,7 +37,7 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
     def __init__(self, config: LlamaConfig):
         super(LlavaLlamaModel, self).__init__(config)
         # TODO: make it modular
-        self.reconstruction_head = nn.Linear(config.hidden_size, 1024)
+        self.reconstruction_head = None
         '''
         # ADDITION: reconstruction head
         if hasattr(config, 'reconstruction_head'):
