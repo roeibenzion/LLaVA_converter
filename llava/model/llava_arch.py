@@ -25,6 +25,58 @@ from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH
 
 from llava.mm_utils import get_anyres_image_grid_shape
 
+class CrossAttentionLayer(nn.Module):
+    def __init__(self, llm_hidden_size, hidden_size, num_heads, dropout=0.1):
+        super(CrossAttentionLayer, self).__init__()
+        self.llm_hidden_size = llm_hidden_size
+        self.hidden_size = hidden_size
+        
+        # Multi-head attention layer
+        self.cross_attention = nn.MultiheadAttention(
+            embed_dim=llm_hidden_size, 
+            num_heads=num_heads, 
+            dropout=dropout, 
+            batch_first=True  # Ensures (batch_size, seq_len, hidden_dim) input format
+        )
+        
+        # Layer normalization
+        self.norm = nn.LayerNorm(llm_hidden_size)
+        
+        # Optional feed-forward layer
+        self.feed_forward = nn.Sequential(
+            nn.Linear(llm_hidden_size, llm_hidden_size * 4),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(llm_hidden_size * 4, llm_hidden_size)
+        )
+        self.ff_norm = nn.LayerNorm(llm_hidden_size)
+
+    def forward(self, llm_features, image_features):
+        """
+        Perform cross-attention between LLM features and image features.
+
+        Args:
+            llm_features (torch.Tensor): [batch_size, seq_len, llm_hidden_size]
+            image_features (torch.Tensor): [batch_size, num_patches, llm_hidden_size]
+        
+        Returns:
+            torch.Tensor: Updated LLM features after cross-attention.
+        """
+        # Compute attention
+        attn_output, _ = self.cross_attention(
+            query=llm_features, 
+            key=image_features, 
+            value=image_features
+        )
+        
+        # Add & Normalize
+        llm_features = self.norm(llm_features + attn_output)
+        
+        # Feed-forward
+        ff_output = self.feed_forward(llm_features)
+        llm_features = self.ff_norm(llm_features + ff_output)
+        
+        return llm_features
 
 class LlavaMetaModel:
 
@@ -203,7 +255,16 @@ class LlavaMetaForCausalLM(ABC):
             else:
                 raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
         else:
-            image_features = self.encode_images(images)
+            # NOTE: functionality for cross-attention if config has mm_cross_attn
+            if hasattr(self.config, 'mm_cross_attn') and self.config.mm_cross_attn:
+                image_features = self.encode_images_no_proj(images) # in dimension of [batch_size, num_patches, hidden_size]
+                image_dim = image_features.shape[-1]
+                projected = self.get_model().mm_projector(image_features) # in dimension of [batch_size, num_patches, llm_hidden_size]
+                projected_dim = projected.shape[-1]
+                cross_attention_layer = CrossAttentionLayer(projected_dim, image_dim, 8)
+                image_features = cross_attention_layer(projected, image_features)
+            else:
+                image_features = self.encode_images(images)
 
         # TODO: image start / end is not implemented here to support pretraining.
         if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
