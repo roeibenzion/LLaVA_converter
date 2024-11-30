@@ -44,8 +44,12 @@ class CustomDataset(Dataset):
         image_file = line["image"]
         if not image_file.endswith('.jpg'):
             image_file += '.jpg'
+        try: 
+            qs = line["question"]
+        except KeyError:
+            qs = line["text"]
         #qs = line["text"]
-        qs = line["question"]
+        #qs = line["question"]
         if self.model_config.mm_use_im_start_end:
             qs = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + qs
         else:
@@ -101,8 +105,23 @@ def eval_model(args):
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name)
 
     #questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
-    with open(os.path.expanduser(args.question_file), 'r') as f:
-        questions = json.load(f)
+    #with open(os.path.expanduser(args.question_file), 'r') as f:
+        #questions = json.load(f)
+    question_file = os.path.expanduser(args.question_file)
+    try:
+        # Attempt to load the file as a JSON Lines file (common format for .jsonl files).
+        questions = [json.loads(q) for q in open(os.path.expanduser(args.question_file), "r")]
+        print("File successfully loaded as JSON Lines.")
+    except json.JSONDecodeError:
+        try:
+            # If the JSON Lines parsing fails, fall back to standard JSON format.
+            with open(question_file, 'r') as f:
+                questions = json.load(f)
+            print("File successfully loaded as standard JSON.")
+        except json.JSONDecodeError:
+            raise ValueError("File format not recognized as either JSON Lines or standard JSON.")
+
+    print("File loaded as JSON Lines.")
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     answers_file = os.path.expanduser(args.answers_file)
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
@@ -129,8 +148,11 @@ def eval_model(args):
             else:    
                 idx = line["image_id"]
             #cur_prompt = line["text"]
-            cur_prompt = line["question"]
-
+            try:
+                cur_prompt = line["question"]
+            except KeyError:
+                cur_prompt = line["text"]
+                
             input_ids = input_ids.to(device='cuda', non_blocking=True)
 
             
