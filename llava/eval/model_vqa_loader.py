@@ -42,8 +42,8 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         line = self.questions[index]
         image_file = line["image"]
-        if not image_file.endswith('.jpg'):
-            image_file += '.jpg'
+        #if not image_file.endswith('.jpg'):
+        #    image_file += '.jpg'
         try: 
             qs = line["question"]
         except KeyError:
