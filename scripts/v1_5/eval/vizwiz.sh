@@ -7,7 +7,6 @@ python -m llava.eval.model_vqa_loader \
     --answers-file ./playground/data/eval/vizwiz/answers/llava-v1.5-7b.jsonl \
     --temperature 0 \
     --conv-mode vicuna_v1 \
-    --q_limit 10
 
 python scripts/convert_vizwiz_for_submission.py \
     --annotation-file ./playground/data/eval/vizwiz/test.json \
