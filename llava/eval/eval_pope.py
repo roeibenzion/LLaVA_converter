@@ -61,12 +61,20 @@ def eval_pope(answers, label_file):
     print('Yes ratio: {}'.format(yes_ratio))
     print('%.3f, %.3f, %.3f, %.3f, %.3f' % (f1, acc, precision, recall, yes_ratio) )
 
+def get_id_by_image(questions):
+    ret_questions = {}
+    for key in questions:
+        question = questions[key]
+        new_key = question['image'].split('_')[-1].split('.')[0]
+        ret_questions[new_key] = question
+    return ret_questions
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--annotation-dir", type=str)
     parser.add_argument("--question-file", type=str)
     parser.add_argument("--result-file", type=str)
     args = parser.parse_args()
+
 
     questions = [json.loads(line) for line in open(args.question_file)]
     questions = {question['question_id']: question for question in questions}
@@ -75,6 +83,7 @@ if __name__ == "__main__":
         assert file.startswith('coco_pope_')
         assert file.endswith('.json')
         category = file[10:-5]
+        questions = get_id_by_image(questions)
         cur_answers = [x for x in answers if questions[x['question_id']]['category'] == category]
         print('Category: {}, # samples: {}'.format(category, len(cur_answers)))
         eval_pope(cur_answers, os.path.join(args.annotation_dir, file))
