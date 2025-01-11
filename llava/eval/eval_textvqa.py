@@ -27,8 +27,8 @@ def prompt_processor(prompt):
     elif len(prompt.split('\n')) == 2:
         question = prompt.split('\n')[0]
     else:
-    #    assert False
-        question = prompt
+        assert False
+
     return question.lower()
 
 
@@ -43,12 +43,9 @@ def eval_single(annotation_file, result_file):
     for result in results:
         annotation = annotations[(result['question_id'], prompt_processor(result['prompt']))]
         pred_list.append({
-            #"pred_answer": result['text'],
-            "pred_answer": result['text'].lower(),
+            "pred_answer": result['text'],
             "gt_answers": annotation['answers'],
         })
-        print('pred:', result['text'].lower())
-        print('gt:', annotation['answers'])
 
     evaluator = TextVQAAccuracyEvaluator()
     print('Samples: {}\nAccuracy: {:.2f}%\n'.format(len(pred_list), 100. * evaluator.eval_pred_list(pred_list)))
