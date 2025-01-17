@@ -14,6 +14,7 @@
 
 
 from abc import ABC, abstractmethod
+from .multimodal_projector.fga.attn import Atten 
 
 import torch
 import torch.nn as nn
@@ -205,7 +206,7 @@ class LlavaMetaForCausalLM(ABC):
     def encode_images_no_proj(self, images):
         image_features = self.get_model().get_vision_tower()(images)
         return image_features
-    
+      
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None
@@ -218,6 +219,7 @@ class LlavaMetaForCausalLM(ABC):
             if type(images) is list:
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
             concat_images = torch.cat([image for image in images], dim=0)
+            X_v = concat_images
             image_features = self.encode_images(concat_images)
             split_sizes = [image.shape[0] for image in images]
             image_features = torch.split(image_features, split_sizes, dim=0)
@@ -263,17 +265,8 @@ class LlavaMetaForCausalLM(ABC):
             else:
                 raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
         else:
-            # NOTE: functionality for cross-attention if config has mm_cross_attn, remove band aid later.
-            if hasattr(self.config, 'mm_cross_attn') and self.config.mm_cross_attn:
-                image_features = self.encode_images_no_proj(images) # in dimension of [batch_size, num_patches, hidden_size]
-                image_dim = image_features.shape[-1]
-                projected = self.get_model().mm_projector(image_features) # in dimension of [batch_size, num_patches, llm_hidden_size]
-                projected_dim = projected.shape[-1]
-                cross_attention_layer = CrossAttentionLayer(projected_dim, image_dim, 8).to(image_features.device).to(image_features.dtype)
-                image_features = cross_attention_layer(projected, image_features)
-            else:
-                image_features = self.encode_images(images)
-
+             image_features = self.encode_images(images)
+        X_v = self.encode_images_no_proj(images)
         # TODO: image start / end is not implemented here to support pretraining.
         if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
             raise NotImplementedError
@@ -303,10 +296,12 @@ class LlavaMetaForCausalLM(ABC):
         new_labels = []
         cur_image_idx = 0
         for batch_idx, cur_input_ids in enumerate(input_ids):
+            text_only_tokens = []
             num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
             if num_images == 0:
                 cur_image_features = image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
+                text_only_tokens.append(cur_input_embeds_1)
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0]], dim=0)
                 new_input_embeds.append(cur_input_embeds)
                 new_labels.append(labels[batch_idx])
@@ -323,9 +318,23 @@ class LlavaMetaForCausalLM(ABC):
             split_sizes = [x.shape[0] for x in cur_labels_noim]
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
+            if True:
+                H_q = torch.cat(cur_input_embeds_no_im, dim=0)
+                X_v = torch.tensor(X_v) 
+                image_dimension = self.get_vision_tower().config.hidden_size
+                text_dimension = self.config.hidden_size
+                util_e = [text_dimension, image_dimension]
+                sharing_factor = {0:(1,[1]), 1:(1,[0])} #NOTE: add sharing factor
+                print(list(H_q.size())[0], list(X_v.size())[0])
+                sizes = [list(H_q.size())[0], list(X_v.size())[0]]
+                atten = Atten(util_e, sharing_factor, False, sizes)
+                atten = atten.to(self.device)
+                atten = atten([H_q, X_v])
+                H_q, X_v = atten[0], atten[1]
+                image_features = self.get_model().mm_projector(X_v)
+                num_images = len(image_features)
             cur_new_input_embeds = []
             cur_new_labels = []
-
             for i in range(num_images + 1):
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
