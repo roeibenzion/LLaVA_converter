@@ -2,6 +2,7 @@
 
 python -m llava.eval.model_vqa_loader \
     --model-path liuhaotian/llava-v1.5-7b \
+    --model-base lmsys/vicuna-7b-v1.5 \
     --question-file ./playground/data/eval/vizwiz/test.json \
     --image-folder ./playground/data/eval/vizwiz/test \
     --answers-file ./playground/data/eval/vizwiz/answers/llava-v1.5-7b.jsonl \

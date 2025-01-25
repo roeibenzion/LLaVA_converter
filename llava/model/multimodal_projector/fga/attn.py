@@ -62,7 +62,6 @@ class Pairwise(nn.Module):
 
         X_norm = F.normalize(X_embed)
         Y_norm = F.normalize(Y_embed)
-
         S = X_norm.transpose(1, 2).bmm(Y_norm)
         if self.x_spatial_dim is not None:
             S = self.normalize_S(S.view(-1, self.x_spatial_dim * self.y_spatial_dim)) \
@@ -132,6 +131,7 @@ class Atten(nn.Module):
                 in combinations_with_replacement(enumerate(util_e), 2):
             # self
             if self.self_flag and idx1 == idx2:
+                print("Going to pairwise with ", e_dim_1, sizes[idx1])
                 self.pp_models[str(idx1)] = Pairwise(e_dim_1, sizes[idx1])
             else:
                 if pairwise_flag:
@@ -143,6 +143,7 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
+                    print("Going to pairwise with ", e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
                     self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
 
         # Handle reduce potentials (with scalars)
@@ -184,7 +185,7 @@ class Atten(nn.Module):
                or (priors is not None
                    and self.prior_flag
                    and len(priors) == self.n_utils)
-        b_size = utils[0].size(0)
+        b_size = utils[1].size(0)
         util_factors = dict()
         attention = list()
 

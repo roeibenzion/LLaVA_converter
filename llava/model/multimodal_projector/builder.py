@@ -1,7 +1,28 @@
 import torch
 import torch.nn as nn
 import re
+from .fga import fga
 
+class fgabuilder:
+    '''
+    factor graph attention builder. 
+    The input is a list of modlities and their hidden dimensions.
+    The output is attended representations of each modality.
+    '''
+    def __init__(self, vocab_size, word_embed_dim, hidden_ques_dim, hidden_ans_dim,
+                 hidden_hist_dim, hidden_cap_dim, hidden_img_dim):
+        self.vocab_size = vocab_size
+        self.word_embed_dim = word_embed_dim
+        self.hidden_ques_dim = hidden_ques_dim
+        self.hidden_ans_dim = hidden_ans_dim
+        self.hidden_hist_dim = hidden_hist_dim
+        self.hidden_cap_dim = hidden_cap_dim
+        self.hidden_img_dim = hidden_img_dim
+
+    def build(self):
+        return fga(self.vocab_size, self.word_embed_dim, self.hidden_ques_dim, self.hidden_ans_dim,
+                   self.hidden_hist_dim, self.hidden_cap_dim, self.hidden_img_dim)
+    
 class MMAttn(nn.Module):
     def __init__(self, hidden_size, projector, num_heads=8, depth=1):
         super().__init__()
@@ -109,7 +130,7 @@ def load_pretrained_projector(projector, strict=False, path='./checkpoints/llava
 
 def build_vision_projector(config, delay_load=False, **kwargs):
     projector_type = getattr(config, 'mm_projector_type', 'linear')
-
+        
     if projector_type == 'from_pretrained':
         projector = load_pretrained_projector(get_projector_from_7b(config, ext=False), strict=True)
         return projector
