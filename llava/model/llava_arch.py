@@ -12,7 +12,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-
+import torch.nn.functional as F
 from abc import ABC, abstractmethod
 from .multimodal_projector.fga.attn import Atten 
 
@@ -328,7 +328,10 @@ class LlavaMetaForCausalLM(ABC):
             split_sizes = [x.shape[0] for x in cur_labels_noim]
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
-            H_q.append(torch.cat(cur_input_embeds_no_im, dim=0).unsqueeze(0)) 
+            # add all text tokens to H_q
+            #H_q.extend(cur_input_embeds_no_im) 
+            # insert only the last text token
+            H_q.append(cur_input_embeds_no_im[-1])
             if accumalate_text_tokens:
                 continue
             cur_new_input_embeds = []
@@ -351,12 +354,17 @@ class LlavaMetaForCausalLM(ABC):
             new_labels.append(cur_new_labels)
         
         if accumalate_text_tokens:
-            # turn H_q into a tensor
-            H_q = torch.cat(H_q, dim=0)
+            # pad the text tokens to the same length
+            max_len = max(x.shape[0] for x in H_q)
+            for i in range(len(H_q)):
+                H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
+            H_q = torch.stack(H_q)
+            print(H_q.size())
             # send H_q and X_v to the attention module
+            print(X_v.size())
             atten = atten([H_q.float(), X_v.float()])
             # get the output of the attention module
-            X_v = atten[1].Half()
+            X_v = atten[1].half()
             # prject 
             X_v = self.get_model().mm_projector(X_v)
             # compensate for the loop in the previous code
