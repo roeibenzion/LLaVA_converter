@@ -954,14 +954,13 @@ def train(attn_implementation=None):
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
 
         if model_args.fga is not None:
-            #hardcoded
-            sharing_factor = {0:(1,[1])}
-            # vit336
-            sizes = [None, 576]
-            text_dimention = model.config.hidden_size
-            vision_dimention = vision_tower.config.hidden_size
-            util_e = [text_dimention, vision_dimention]
-            model.initialize_fga(util_e, sharing_factor, False, sizes).to(dtype=compute_dtype, device=training_args.device)
+            sharing_factor = []
+            sizes = []
+            text_dimension = model.config.hidden_size
+            vision_dimension = vision_tower.config.hidden_size
+            util_e = [text_dimension, vision_dimension]
+            model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=True)
+            
         
     if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer

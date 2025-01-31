@@ -70,7 +70,7 @@ class FGA(nn.Module):
         sharing_factor_weights = {4: (9, [0, 1]),
                                   5: (9, [0, 1])}
 
-        self.mul_atten = Atten(util_e=[self.hidden_ans_dim, # Answer modal
+        self.mul_attn = attn(util_e=[self.hidden_ans_dim, # Answer modal
                                        self.hidden_ques_dim, # Question modal
                                        self.hidden_cap_dim, # Caption modal
                                        self.hidden_img_dim, # Image modal

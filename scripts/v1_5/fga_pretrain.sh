@@ -7,6 +7,7 @@ deepspeed llava/train/train_mem.py \
     --data_path ./playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
     --image_folder ./playground/data/LLaVA-Pretrain/images \
     --fga True \
+    --image_aspect_ratio "anyres" \
     --vision_tower openai/clip-vit-large-patch14-336 \
     --mm_projector_type from_pretrained \
     --tune_mm_mlp_adapter True \

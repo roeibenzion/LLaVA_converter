@@ -207,15 +207,14 @@ class LlavaMetaForCausalLM(ABC):
         image_features = self.get_model().get_vision_tower()(images)
         return image_features
 
-    def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes):
-        self.atten = Atten(util_e, sharing_factor, prior_flag, sizes)
-        return self.atten
-      
+    def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes, size_force):
+        self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force=size_force)
+        
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None
     ):
-        accumalate_text_tokens = hasattr(self, "atten") and self.atten is not None
+        use_attn = hasattr(self, "atten") and self.atten is not None
         vision_tower = self.get_vision_tower()
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
             return input_ids, position_ids, attention_mask, past_key_values, None, labels
@@ -224,8 +223,10 @@ class LlavaMetaForCausalLM(ABC):
             if type(images) is list:
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
             concat_images = torch.cat([image for image in images], dim=0)
-            X_v = concat_images
-            image_features = self.encode_images(concat_images)
+            if use_attn:
+                image_features = self.encode_images_no_proj(concat_images)
+            else:
+                image_features = self.encode_images(concat_images)
             split_sizes = [image.shape[0] for image in images]
             image_features = torch.split(image_features, split_sizes, dim=0)
             mm_patch_merge_type = getattr(self.config, 'mm_patch_merge_type', 'flat')
@@ -271,7 +272,7 @@ class LlavaMetaForCausalLM(ABC):
                 raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
         else:
              image_features = self.encode_images(images)
-        X_v = self.encode_images_no_proj(images)
+             X_v = self.encode_images_no_proj(images)
         # TODO: image start / end is not implemented here to support pretraining.
         if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
             raise NotImplementedError
@@ -300,11 +301,6 @@ class LlavaMetaForCausalLM(ABC):
         new_input_embeds = []
         new_labels = []
         cur_image_idx = 0
-        # sharing_factor = {0:(1,[1])}
-        # sizes = [None, X_v.size(1)]
-        # util_e = [text_dimension, image_dimension]
-        # atten = Atten(util_e, sharing_factor, False, sizes).to(self.device)
-
         H_q = []
         num_images_per_batch = []
         for batch_idx, cur_input_ids in enumerate(input_ids):
@@ -331,7 +327,7 @@ class LlavaMetaForCausalLM(ABC):
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
             H_q.append(cur_input_embeds_no_im[-1])
             num_images_per_batch.append(num_images)
-            if accumalate_text_tokens:
+            if use_attn:
                 continue
             cur_new_input_embeds = []
             cur_new_labels = []
@@ -352,10 +348,11 @@ class LlavaMetaForCausalLM(ABC):
             new_input_embeds.append(cur_new_input_embeds)
             new_labels.append(cur_new_labels)
         
-        if accumalate_text_tokens:
+        if use_attn:
             # pad the text tokens to the same length
             max_len = max(x.shape[0] for x in H_q)
             for i in range(len(H_q)):
+                #NOTE: size of embedding should be the same for all samples. They did it with 21, i'll do it with more.
                 H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
             H_q = torch.stack(H_q)
             # send H_q and X_v to the attention module
