@@ -208,7 +208,7 @@ class LlavaMetaForCausalLM(ABC):
         return image_features
 
     def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes, size_force):
-        self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force=size_force)
+        self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force)
         
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
