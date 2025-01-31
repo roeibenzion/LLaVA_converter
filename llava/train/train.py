@@ -65,6 +65,7 @@ class ModelArguments:
     mm_patch_merge_type: Optional[str] = field(default='flat')
     mm_vision_select_feature: Optional[str] = field(default="patch")
     mm_cross_attn: bool = field(default=False)
+    fga: bool = field(default=False)
 
 
 @dataclass
@@ -952,6 +953,16 @@ def train(attn_implementation=None):
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
 
+        if model_args.fga is not None:
+            #hardcoded
+            sharing_factor = {0:(1,[1])}
+            # vit336
+            sizes = [None, 576]
+            text_dimention = model.config.hidden_size
+            vision_dimention = vision_tower.config.hidden_size
+            util_e = [text_dimention, vision_dimention]
+            model.initialize_fga(util_e, sharing_factor, False, sizes).to(dtype=compute_dtype, device=training_args.device)
+        
     if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer
         for name, module in model.named_modules():

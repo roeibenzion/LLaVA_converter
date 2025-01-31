@@ -206,15 +206,16 @@ class LlavaMetaForCausalLM(ABC):
     def encode_images_no_proj(self, images):
         image_features = self.get_model().get_vision_tower()(images)
         return image_features
+
+    def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes):
+        self.atten = Atten(util_e, sharing_factor, prior_flag, sizes)
+        return self.atten
       
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None
     ):
-        #NOTE: Make dependency in if the model use the attention module
-        accumalate_text_tokens = True
-        image_dimension = self.get_vision_tower().config.hidden_size
-        text_dimension = self.config.hidden_size
+        accumalate_text_tokens = hasattr(self, "atten") and self.atten is not None
         vision_tower = self.get_vision_tower()
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
             return input_ids, position_ids, attention_mask, past_key_values, None, labels
@@ -299,19 +300,19 @@ class LlavaMetaForCausalLM(ABC):
         new_input_embeds = []
         new_labels = []
         cur_image_idx = 0
-        sharing_factor = {0:(1,[1])} #NOTE: add sharing factor
-        #sizes = [H_q.size(1), X_v.size(1)]
-        sizes = [None, X_v.size(1)]
-        util_e = [text_dimension, image_dimension]
-        atten = Atten(util_e, sharing_factor, False, sizes).to(self.device)
+        # sharing_factor = {0:(1,[1])}
+        # sizes = [None, X_v.size(1)]
+        # util_e = [text_dimension, image_dimension]
+        # atten = Atten(util_e, sharing_factor, False, sizes).to(self.device)
+
         H_q = []
+        num_images_per_batch = []
         for batch_idx, cur_input_ids in enumerate(input_ids):
-            text_only_tokens = []
             num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
             if num_images == 0:
                 cur_image_features = image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
-                text_only_tokens.append(cur_input_embeds_1)
+                H_q.append(cur_input_embeds_1)
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0]], dim=0)
                 new_input_embeds.append(cur_input_embeds)
                 new_labels.append(labels[batch_idx])
@@ -328,10 +329,8 @@ class LlavaMetaForCausalLM(ABC):
             split_sizes = [x.shape[0] for x in cur_labels_noim]
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
-            # add all text tokens to H_q
-            #H_q.extend(cur_input_embeds_no_im) 
-            # insert only the last text token
             H_q.append(cur_input_embeds_no_im[-1])
+            num_images_per_batch.append(num_images)
             if accumalate_text_tokens:
                 continue
             cur_new_input_embeds = []
@@ -359,16 +358,16 @@ class LlavaMetaForCausalLM(ABC):
             for i in range(len(H_q)):
                 H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
             H_q = torch.stack(H_q)
-            print(H_q.size())
             # send H_q and X_v to the attention module
-            print(X_v.size())
-            atten = atten([H_q.float(), X_v.float()])
-            # get the output of the attention module
-            X_v = atten[1].half()
-            # prject 
-            X_v = self.get_model().mm_projector(X_v)
+            X_v = self.atten([H_q, X_v])[1]
+            X_v = X_v.to(self.get_model().mm_projector[0].weight.dtype)
+            # Get it to a one token represtation so [bs, 1, text_dim]
+            X_v = X_v.unsqueeze(1)
+            # project 
+            image_features = self.get_model().mm_projector(X_v)
             # compensate for the loop in the previous code
             for batch_idx, cur_input_ids in enumerate(input_ids):
+                num_images = num_images_per_batch[batch_idx]
                 cur_new_input_embeds = []
                 cur_new_labels = []
                 
