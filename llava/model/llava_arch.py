@@ -209,6 +209,7 @@ class LlavaMetaForCausalLM(ABC):
 
     def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes, size_force):
         self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force)
+        return self.atten
         
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels,
@@ -350,7 +351,7 @@ class LlavaMetaForCausalLM(ABC):
         
         if use_attn:
             # pad the text tokens to the same length
-            max_len = max(x.shape[0] for x in H_q)
+            max_len = 50
             for i in range(len(H_q)):
                 #NOTE: size of embedding should be the same for all samples. They did it with 21, i'll do it with more.
                 H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)

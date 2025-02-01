@@ -954,12 +954,13 @@ def train(attn_implementation=None):
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
 
         if model_args.fga is not None:
-            sharing_factor = []
-            sizes = []
+            sharing_factor = {}
+            # need to modify
+            sizes = [50, 576]
             text_dimension = model.config.hidden_size
             vision_dimension = vision_tower.config.hidden_size
             util_e = [text_dimension, vision_dimension]
-            model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=True)
+            model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
             
         
     if training_args.bits in [4, 8]:

@@ -121,6 +121,7 @@ class Atten(nn.Module):
 
         #force the provided size
         for idx, e_dim in enumerate(util_e):
+            print(idx, e_dim)
             self.un_models.append(Unary(e_dim))
             if self.size_force:
                 self.spatial_pool[str(idx)] = nn.AdaptiveAvgPool1d(sizes[idx])
@@ -131,7 +132,6 @@ class Atten(nn.Module):
                 in combinations_with_replacement(enumerate(util_e), 2):
             # self
             if self.self_flag and idx1 == idx2:
-                print("Going to pairwise with ", e_dim_1, sizes[idx1])
                 self.pp_models[str(idx1)] = Pairwise(e_dim_1, sizes[idx1])
             else:
                 if pairwise_flag:
@@ -143,7 +143,6 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
-                    print("Going to pairwise with ", e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
                     self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
 
         # Handle reduce potentials (with scalars)
@@ -190,12 +189,14 @@ class Atten(nn.Module):
         attention = list()
 
         #Force size, constant size is used for pairwise batch normalization
+        print(self.spatial_pool.keys())
         if self.size_force:
             for i, (num_utils, _) in self.sharing_factor_weights.items():
                 if str(i) not in self.spatial_pool.keys():
                     continue
                 else:
                     high_util = utils[i]
+                    print(utils[i].size(), i)
                     high_util = high_util.view(num_utils * b_size, high_util.size(2), high_util.size(3))
                     high_util = high_util.transpose(1, 2)
                     utils[i] = self.spatial_pool[str(i)](high_util).transpose(1, 2)
@@ -205,6 +206,7 @@ class Atten(nn.Module):
                         or str(i) not in self.spatial_pool.keys():
                     continue
                 utils[i] = utils[i].transpose(1, 2)
+                print(self.spatial_pool[str(i)])
                 utils[i] = self.spatial_pool[str(i)](utils[i]).transpose(1, 2)
                 if self.prior_flag and priors[i] is not None:
                     priors[i] = self.spatial_pool[str(i)](priors[i].unsqueeze(1)).squeeze(1)
