@@ -7,6 +7,7 @@ import ast
 
 from transformers import StoppingCriteria
 from llava.constants import IMAGE_TOKEN_INDEX
+import re
 
 
 def select_best_resolution(original_size, possible_resolutions):
@@ -115,7 +116,7 @@ def get_anyres_image_grid_shape(image_size, grid_pinpoints, patch_size):
     width, height = select_best_resolution(image_size, possible_resolutions)
     return width // patch_size, height // patch_size
 
-
+'''
 def process_anyres_image(image, processor, grid_pinpoints):
     """
     Process an image with variable resolutions.
@@ -143,7 +144,58 @@ def process_anyres_image(image, processor, grid_pinpoints):
     image_patches = [processor.preprocess(image_patch, return_tensors='pt')['pixel_values'][0]
                      for image_patch in image_patches]
     return torch.stack(image_patches, dim=0)
+'''
+def process_anyres_image(image, processor, grid_pinpoints):
+    """
+    Process an image with variable resolutions.
 
+    Args:
+        image (PIL.Image.Image): The input image to be processed.
+        processor: The image processor object.
+        grid_pinpoints (str): A string representation of a list of possible resolutions.
+
+    Returns:
+        torch.Tensor: A tensor containing the processed image patches.
+    """
+    # Convert grid_pinpoints from string to list
+    if isinstance(grid_pinpoints, str) and "x" in grid_pinpoints:
+        try:
+            patch_size = processor.size[0]
+        except Exception as e:
+            patch_size = processor.size["shortest_edge"]
+        assert patch_size in [224, 336, 384, 448, 512], "patch_size should be in [224, 336, 384, 448, 512]"
+        # Use regex to extract the range from the input string
+        matches = re.findall(r"\((\d+)x(\d+)\)", grid_pinpoints)
+        range_start = tuple(map(int, matches[0]))
+        range_end = tuple(map(int, matches[-1]))
+        # Generate a matrix of tuples from (range_start[0], range_start[1]) to (range_end[0], range_end[1])
+        grid_pinpoints = [(i, j) for i in range(range_start[0], range_end[0] + 1) for j in range(range_start[1], range_end[1] + 1)]
+        # Multiply all elements by patch_size
+        grid_pinpoints = [[dim * patch_size for dim in pair] for pair in grid_pinpoints]
+
+    if type(grid_pinpoints) is list:
+        possible_resolutions = grid_pinpoints
+    else:
+        possible_resolutions = ast.literal_eval(grid_pinpoints)
+    best_resolution = select_best_resolution(image.size, possible_resolutions)
+    image_padded = resize_and_pad_image(image, best_resolution)
+
+    patches = divide_to_patches(image_padded, processor.crop_size["height"])
+
+    # FIXME: this seems to be a bug that it resizes instead of pad.
+    # but to keep it consistent with previous, i will keep it as it is
+    # TODO: uncomment below to ablate with the padding
+    if isinstance(processor.size, dict):
+        shortest_edge = processor.size["shortest_edge"]
+    else:
+        shortest_edge = min(processor.size)
+    image_original_resize = image.resize((shortest_edge, shortest_edge))
+    # image_padded_square = expand2square(image, tuple(int(x*255) for x in processor.image_mean))
+    # image_original_resize = image_padded_square.resize((processor.size['shortest_edge'], processor.size['shortest_edge']))
+
+    image_patches = [image_original_resize] + patches
+    image_patches = [processor.preprocess(image_patch, return_tensors="pt")["pixel_values"][0] for image_patch in image_patches]
+    return torch.stack(image_patches, dim=0)
 
 def load_image_from_base64(image):
     return Image.open(BytesIO(base64.b64decode(image)))

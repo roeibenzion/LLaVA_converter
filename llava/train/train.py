@@ -36,6 +36,7 @@ from llava.model import *
 from llava.mm_utils import tokenizer_image_token
 
 from PIL import Image
+from llava import mm_utils
 
 
 local_rank = None
@@ -76,6 +77,9 @@ class DataArguments:
     is_multimodal: bool = False
     image_folder: Optional[str] = field(default=None)
     image_aspect_ratio: str = 'square'
+    image_grid_pinpoints: Optional[str] = field(default=None)
+    image_crop_resolution: Optional[int] = field(default=None)
+    image_split_resolution: Optional[int] = field(default=None)
 
 
 @dataclass
@@ -709,7 +713,9 @@ class LazySupervisedDataset(Dataset):
             image_folder = self.data_args.image_folder
             processor = self.data_args.image_processor
             image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
-            if self.data_args.image_aspect_ratio == 'pad':
+            if self.data_args.image_aspect_ratio == 'anyres':
+                image = mm_utils.process_anyres_image(image, self.data_args.image_processor, self.data_args.image_grid_pinpoints)
+            elif self.data_args.image_aspect_ratio == 'pad':
                 def expand2square(pil_img, background_color):
                     width, height = pil_img.size
                     if width == height:
