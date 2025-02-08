@@ -81,7 +81,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         image_sizes: Optional[List[List[int]]] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-
+        if images is not None:
+            image_sizes = [image.size() for image in images]
         if inputs_embeds is None:
             (
                 input_ids,
@@ -150,6 +151,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             raise NotImplementedError("`inputs_embeds` is not supported")
 
         if images is not None:
+            image_sizes = [image.size() for image in images]
             (
                 inputs,
                 position_ids,

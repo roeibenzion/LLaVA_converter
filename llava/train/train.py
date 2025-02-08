@@ -958,7 +958,7 @@ def train(attn_implementation=None):
         training_args.use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
-
+        model.config.image_grid_pinpoints = data_args.image_grid_pinpoints
         if model_args.fga:
             sharing_factor = {}
             # need to modify

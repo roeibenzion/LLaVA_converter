@@ -95,8 +95,7 @@ def divide_to_patches(image, patch_size):
             patches.append(patch)
 
     return patches
-
-
+'''
 def get_anyres_image_grid_shape(image_size, grid_pinpoints, patch_size):
     """
     Calculate the shape of the image patch grid after the preprocessing for images of any resolution.
@@ -116,7 +115,7 @@ def get_anyres_image_grid_shape(image_size, grid_pinpoints, patch_size):
     width, height = select_best_resolution(image_size, possible_resolutions)
     return width // patch_size, height // patch_size
 
-'''
+
 def process_anyres_image(image, processor, grid_pinpoints):
     """
     Process an image with variable resolutions.
@@ -145,6 +144,37 @@ def process_anyres_image(image, processor, grid_pinpoints):
                      for image_patch in image_patches]
     return torch.stack(image_patches, dim=0)
 '''
+def get_anyres_image_grid_shape(image_size, grid_pinpoints, patch_size):
+    """
+    Calculate the shape of the image patch grid after the preprocessing for images of any resolution.
+
+    Args:
+        image_size (tuple): The size of the input image in the format (width, height).
+        grid_pinpoints (str): A string representation of a list of possible resolutions.
+        patch_size (int): The size of each image patch.
+
+    Returns:
+        tuple: The shape of the image patch grid in the format (width, height).
+    """
+    if isinstance(grid_pinpoints, str) and "x" in grid_pinpoints:
+        assert patch_size in [224, 336, 384, 448, 512], "patch_size should be in [224, 336, 384, 448, 512]"
+        # Use regex to extract the range from the input string
+        matches = re.findall(r"\((\d+)x(\d+)\)", grid_pinpoints)
+        range_start = tuple(map(int, matches[0]))
+        range_end = tuple(map(int, matches[-1]))
+        # Generate a matrix of tuples from (range_start[0], range_start[1]) to (range_end[0], range_end[1])
+        grid_pinpoints = [(i, j) for i in range(range_start[0], range_end[0] + 1) for j in range(range_start[1], range_end[1] + 1)]
+        # Multiply all elements by patch_size
+        grid_pinpoints = [[dim * patch_size for dim in pair] for pair in grid_pinpoints]
+    if type(grid_pinpoints) is list:
+        possible_resolutions = grid_pinpoints
+    else:
+        possible_resolutions = ast.literal_eval(grid_pinpoints)
+    print("possible_resolutions", possible_resolutions)
+    print("image_size", image_size)
+    width, height = select_best_resolution(image_size, possible_resolutions)
+    return width // patch_size, height // patch_size
+
 def process_anyres_image(image, processor, grid_pinpoints):
     """
     Process an image with variable resolutions.

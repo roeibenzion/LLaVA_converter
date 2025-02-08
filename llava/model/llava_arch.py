@@ -219,7 +219,6 @@ class LlavaMetaForCausalLM(ABC):
         vision_tower = self.get_vision_tower()
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
             return input_ids, position_ids, attention_mask, past_key_values, None, labels
-
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
@@ -234,6 +233,7 @@ class LlavaMetaForCausalLM(ABC):
             image_aspect_ratio = getattr(self.config, 'image_aspect_ratio', 'square')
             if mm_patch_merge_type == 'flat':
                 image_features = [x.flatten(0, 1) for x in image_features]
+                X_v = torch.stack(image_features)
             elif mm_patch_merge_type.startswith('spatial'):
                 new_image_features = []
                 for image_idx, image_feature in enumerate(image_features):
@@ -243,7 +243,13 @@ class LlavaMetaForCausalLM(ABC):
                         height = width = self.get_vision_tower().num_patches_per_side
                         assert height * width == base_image_feature.shape[0]
                         if image_aspect_ratio == 'anyres':
-                            num_patch_width, num_patch_height = get_anyres_image_grid_shape(image_sizes[image_idx], self.config.image_grid_pinpoints, self.get_vision_tower().config.image_size)
+                            '''
+                            try:num_patch_width, num_patch_height = get_anyres_image_grid_shape(image_sizes[image_idx], self.config.image_grid_pinpoints, self.get_vision_tower().config.image_size)
+                            except Exception as e:
+                                print(f"Anyres Error: {e}")
+                                num_patch_width, num_patch_height = 2, 2
+                            '''
+                            num_patch_width, num_patch_height = 2, 2
                             image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
                         else:
                             raise NotImplementedError
@@ -269,6 +275,7 @@ class LlavaMetaForCausalLM(ABC):
                             ), dim=0)
                     new_image_features.append(image_feature)
                 image_features = new_image_features
+                X_v = torch.stack(image_features)
             else:
                 raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
         else:
@@ -348,6 +355,11 @@ class LlavaMetaForCausalLM(ABC):
 
             new_input_embeds.append(cur_new_input_embeds)
             new_labels.append(cur_new_labels)
+            print("here is size and len summery #1: ")
+            print(f"new input embeds: {len(new_input_embeds)}")
+            print(f"new labels: {len(new_labels)}")
+            print(f"new input embeds[0]: {new_input_embeds[0].shape}")
+            print(f"new labels[0]: {new_labels[0].shape}")
         
         if use_attn:
             # pad the text tokens to the same length
@@ -385,7 +397,12 @@ class LlavaMetaForCausalLM(ABC):
 
                 new_input_embeds.append(cur_new_input_embeds)
                 new_labels.append(cur_new_labels)
-        
+                print("here is size and len summery #2: ")
+                print(f"new input embeds: {len(new_input_embeds)}")
+                print(f"new labels: {len(new_labels)}")
+                print(f"new input embeds[0]: {new_input_embeds[0].shape}")
+                print(f"new labels[0]: {new_labels[0].shape}")
+
         # Truncate sequences to max length as image embeddings can make the sequence longer
         tokenizer_model_max_length = getattr(self.config, 'tokenizer_model_max_length', None)
         if tokenizer_model_max_length is not None:
