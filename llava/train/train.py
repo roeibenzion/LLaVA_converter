@@ -962,7 +962,7 @@ def train(attn_implementation=None):
         if model_args.fga:
             sharing_factor = {}
             # need to modify
-            sizes = [50, 576]
+            sizes = []
             text_dimension = model.config.hidden_size
             vision_dimension = vision_tower.config.hidden_size
             util_e = [text_dimension, vision_dimension]

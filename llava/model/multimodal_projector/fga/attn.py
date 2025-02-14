@@ -143,8 +143,8 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
+                    print(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
                     self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
-
         # Handle reduce potentials (with scalars)
         self.reduce_potentials = nn.ModuleList()
 
