@@ -215,7 +215,6 @@ class LlavaMetaForCausalLM(ABC):
     def get_visual_tokens(self, images, image_features, image_sizes = None):
         split_sizes = [image.shape[0] for image in images]
         image_features = torch.split(image_features, split_sizes, dim=0)
-        print(f"image features: {len(image_features)}")
         #mm_patch_merge_type = getattr(self.config, 'mm_patch_merge_type', 'flat')
         mm_patch_merge_type = 'flat'
         image_aspect_ratio = getattr(self.config, 'image_aspect_ratio', 'square')
@@ -225,7 +224,6 @@ class LlavaMetaForCausalLM(ABC):
             new_image_features = []
             for image_idx, image_feature in enumerate(image_features):
                 if image_feature.shape[0] > 1:
-                    print("image feature shape: ", image_feature.shape)
                     base_image_feature = image_feature[0]
                     image_feature = image_feature[1:]
                     height = width = self.get_vision_tower().num_patches_per_side
@@ -238,9 +236,7 @@ class LlavaMetaForCausalLM(ABC):
                             num_patch_width, num_patch_height = 2, 2
                         '''
                         num_patch_width, num_patch_height = 2, 2
-                        print(f"before reshape: {image_feature.shape}")
                         image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
-                        print(f"after reshape: {image_feature.shape}")
                     else:
                         raise NotImplementedError
                     if 'unpad' in mm_patch_merge_type:
@@ -277,19 +273,13 @@ class LlavaMetaForCausalLM(ABC):
         images, image_sizes=None):
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
-                print(len(images))
-                print(image_sizes)
                 num_patches_per_image = [image.shape[0] for image in images]
-                for image in images:
-                    print("the size of each image ", image.shape)
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
             else:
                 print(images.shape)
                 num_patches_per_image = [image.shape[0] for image in images]
             concat_images = torch.cat([image for image in images], dim=0)
-            print(f"concat images: {concat_images.shape}")
             image_features = self.encode_images_no_proj(concat_images)
-            print(f"image features: {image_features.shape}")
         else:
             image_features = self.encode_images_no_proj(images)
         X_v = image_features
@@ -323,7 +313,6 @@ class LlavaMetaForCausalLM(ABC):
             if num_images == 0:
                 cur_image_features = image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
-                print(f"cur_input_embeds_1: {cur_input_embeds_1.shape}")
                 H_q.append(cur_input_embeds_1)
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0]], dim=0)
                 new_input_embeds.append(cur_input_embeds)
@@ -341,28 +330,20 @@ class LlavaMetaForCausalLM(ABC):
             split_sizes = [x.shape[0] for x in cur_labels_noim]
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
-            print(f"cur_input_embeds_no_im: {cur_input_embeds_no_im[-1].shape}")
             H_q.append(cur_input_embeds_no_im[-1])
             num_images_per_batch.append(num_images)
         # pad the text tokens to the same length
         max_len = 50
-        print(f"size of H_q: {len(H_q)}")
-        for i in range(len(H_q)):
-            print(f"size of H_q[{i}]: {H_q[i].shape}")
         for i in range(len(H_q)):
             #NOTE: size of embedding should be the same for all samples. They did it with 21, i'll do it with more.
             H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
         H_q = torch.stack(H_q)
-        print(f"size of H_q: {H_q.shape}")
-        print(f"size of X_v: {X_v.shape}")
         # iterate over the image patches
         new_X_v = []
         split_images = torch.split(X_v, num_patches_per_image, dim=0)
         for batch_idx, image in enumerate(split_images):
-            print(f"image: {image.shape}")
             patches_atten = []
             for image_patch in image:
-                print(f"image_patch: {image_patch.shape}")
                 # atten
                 patches_atten.append(self.atten([H_q[batch_idx].unsqueeze(0), image_patch.unsqueeze(0)])[1])
             new_X_v.append(torch.stack(patches_atten))
