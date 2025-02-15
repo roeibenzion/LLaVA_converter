@@ -6,17 +6,20 @@ deepspeed llava/train/train_mem.py \
     --version plain \
     --data_path ./playground/data/LLaVA-Pretrain/blip_laion_cc_sbu_558k.json \
     --image_folder ./playground/data/LLaVA-Pretrain/images \
-    --fga True \
     --vision_tower openai/clip-vit-large-patch14-336 \
     --mm_projector_type from_pretrained \
     --tune_mm_mlp_adapter True \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
+    --mm_patch_merge_type spatial \
+    --image_aspect_ratio "anyres" \
+    --image_grid_pinpoints  "(1x1),...,(6x6)" \
+    --fga True \
     --bf16 True \
     --output_dir ./checkpoints/llava-v1.5-7b-pretrain \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 8 \
+    --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
