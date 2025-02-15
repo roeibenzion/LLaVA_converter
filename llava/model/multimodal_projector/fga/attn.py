@@ -63,6 +63,8 @@ class Pairwise(nn.Module):
         X_norm = F.normalize(X_embed)
         Y_norm = F.normalize(Y_embed)
         S = X_norm.transpose(1, 2).bmm(Y_norm)
+        # NOTE: from some reason x_spatioal dim is not None after one iteration of fga. Now hardcoding it to None
+        self.x_spatial_dim = None
         if self.x_spatial_dim is not None:
             S = self.normalize_S(S.view(-1, self.x_spatial_dim * self.y_spatial_dim)) \
                 .view(-1, self.x_spatial_dim, self.y_spatial_dim)

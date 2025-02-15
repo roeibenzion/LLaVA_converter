@@ -961,8 +961,9 @@ def train(attn_implementation=None):
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints
         if model_args.fga:
             sharing_factor = {}
-            # need to modify
-            sizes = []
+            # 576
+            # 576 spatial dimension.
+            sizes = [None, 576]
             text_dimension = model.config.hidden_size
             vision_dimension = vision_tower.config.hidden_size
             util_e = [text_dimension, vision_dimension]
