@@ -973,7 +973,7 @@ def train(attn_implementation=None):
             # 576
             # 576 spatial dimension.
             #sizes = [None, 576]
-            num_of_patches = patches_height * patches_width
+            num_of_patches = patches_height * patches_width + 1
             sizes = [None] 
             sizes.extend([576 for _ in range(num_of_patches)])
             text_dimension = model.config.hidden_size
