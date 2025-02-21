@@ -271,15 +271,16 @@ class LlavaMetaForCausalLM(ABC):
         return image_features
     def inputs_for_atten(self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None):
+        print("1")
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
                 num_patches_per_image = [image.shape[0] for image in images]
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
             else:
-                print(images.shape)
                 num_patches_per_image = [image.shape[0] for image in images]
             concat_images = torch.cat([image for image in images], dim=0)
             image_features = self.encode_images_no_proj(concat_images)
+            print("2")
         else:
             image_features = self.encode_images_no_proj(images)
         X_v = image_features
@@ -343,9 +344,17 @@ class LlavaMetaForCausalLM(ABC):
         split_images = torch.split(X_v, num_patches_per_image, dim=0)
         for batch_idx, image in enumerate(split_images):
             patches_atten = []
-            for image_patch in image:
+            for i in range(image.shape[0]):
+                print(image.shape[0])
+                image_patch = image[i]
+                print(image_patch.size())
+                rest_of_patches_list = [image[j].unsqueeze(0) for j in range(image.shape[0]) if j != i]
+                print(rest_of_patches_list[0].size())
                 # atten
-                patches_atten.append(self.atten([H_q[batch_idx].unsqueeze(0), image_patch.unsqueeze(0)])[1])
+                print("3")
+                params = [H_q[batch_idx].unsqueeze(0), image_patch.unsqueeze(0)] + rest_of_patches_list
+                patches_atten.append(self.atten(params)[1])
+                print("4")
             new_X_v.append(torch.stack(patches_atten))
         X_v = torch.cat(new_X_v, dim=0)
         # project 
@@ -374,11 +383,6 @@ class LlavaMetaForCausalLM(ABC):
 
             new_input_embeds.append(cur_new_input_embeds)
             new_labels.append(cur_new_labels)
-            print("here is size and len summery #2: ")
-            print(f"new input embeds: {len(new_input_embeds)}")
-            print(f"new labels: {len(new_labels)}")
-            print(f"new input embeds[0]: {new_input_embeds[0].shape}")
-            print(f"new labels[0]: {new_labels[0].shape}")
 
         # Truncate sequences to max length as image embeddings can make the sequence longer
         tokenizer_model_max_length = getattr(self.config, 'tokenizer_model_max_length', None)

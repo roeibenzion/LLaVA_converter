@@ -958,17 +958,30 @@ def train(attn_implementation=None):
         training_args.use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
-        model.config.image_grid_pinpoints = data_args.image_grid_pinpoints
+            #NOTE: adjust resolution
+        # Assume model_args.image_resolution gives the base patch size, e.g., (patch_width, patch_height)
+        patches_height = 4
+        patches_width = 4
+        full_width = patches_width * 336  
+        full_height = patches_height * 336  
+        grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]
+        model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
         if model_args.fga:
             sharing_factor = {}
+            # for patch2patch assuming you have 37 patches
+            # sharing_factor = {0:(36, [i for i in range(2, 38)])}
             # 576
             # 576 spatial dimension.
-            sizes = [None, 576]
+            #sizes = [None, 576]
+            num_of_patches = patches_height * patches_width
+            sizes = [None] 
+            sizes.extend([576 for _ in range(num_of_patches)])
             text_dimension = model.config.hidden_size
             vision_dimension = vision_tower.config.hidden_size
-            util_e = [text_dimension, vision_dimension]
+            # util_e = [text_dimension, vision_dimension]
+            util_e = [text_dimension] + [vision_dimension for _ in range(num_of_patches)]
             model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
-        
+
     if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer
         for name, module in model.named_modules():
@@ -984,6 +997,7 @@ def train(attn_implementation=None):
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
+
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
                     args=training_args,

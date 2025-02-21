@@ -123,7 +123,6 @@ class Atten(nn.Module):
 
         #force the provided size
         for idx, e_dim in enumerate(util_e):
-            print(idx, e_dim)
             self.un_models.append(Unary(e_dim))
             if self.size_force:
                 self.spatial_pool[str(idx)] = nn.AdaptiveAvgPool1d(sizes[idx])
@@ -145,7 +144,6 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
-                    print(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
                     self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
         # Handle reduce potentials (with scalars)
         self.reduce_potentials = nn.ModuleList()
@@ -191,7 +189,6 @@ class Atten(nn.Module):
         attention = list()
 
         #Force size, constant size is used for pairwise batch normalization
-        print(self.spatial_pool.keys())
         if self.size_force:
             for i, (num_utils, _) in self.sharing_factor_weights.items():
                 if str(i) not in self.spatial_pool.keys():

@@ -14,7 +14,7 @@ deepspeed llava/train/train_mem.py \
     --mm_use_im_patch_token False \
     --mm_patch_merge_type spatial \
     --image_aspect_ratio "anyres" \
-    --image_grid_pinpoints  "(1x1),...,(6x6)" \
+    --image_grid_pinpoints  "(6x6)" \
     --fga True \
     --bf16 True \
     --output_dir ./checkpoints/llava-v1.5-7b-pretrain \
