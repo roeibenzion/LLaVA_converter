@@ -67,6 +67,8 @@ class ModelArguments:
     mm_vision_select_feature: Optional[str] = field(default="patch")
     mm_cross_attn: bool = field(default=False)
     fga: bool = field(default=False)
+    num_patches_height: Optional[int] = field(default=2)
+    num_patches_width: Optional[int] = field(default=2)
 
 
 @dataclass
@@ -960,8 +962,8 @@ def train(attn_implementation=None):
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
             #NOTE: adjust resolution
         # Assume model_args.image_resolution gives the base patch size, e.g., (patch_width, patch_height)
-        patches_height = 4
-        patches_width = 4
+        patches_height = model_args.num_patches_heigh
+        patches_width = model_args.num_patches_width
         full_width = patches_width * 336  
         full_height = patches_height * 336  
         grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]

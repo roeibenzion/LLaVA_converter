@@ -213,7 +213,8 @@ class LlavaMetaForCausalLM(ABC):
         return self.atten
     
     def get_visual_tokens(self, images, image_features, image_sizes = None):
-        split_sizes = [image.shape[0] for image in images]
+        #split_sizes = [image.shape[0] for image in images]
+        split_sizes = images.shape[1]
         image_features = torch.split(image_features, split_sizes, dim=0)
         #mm_patch_merge_type = getattr(self.config, 'mm_patch_merge_type', 'flat')
         mm_patch_merge_type = 'flat'
@@ -340,28 +341,40 @@ class LlavaMetaForCausalLM(ABC):
             H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
         H_q = torch.stack(H_q)
         # iterate over the image patches
-        new_X_v = []
         split_images = torch.split(X_v, num_patches_per_image, dim=0)
+        '''
+        new_X_v = []
         for batch_idx, image in enumerate(split_images):
             patches_atten = []
             for i in range(image.shape[0]):
-                print(image.shape[0])
                 image_patch = image[i]
-                print(image_patch.size())
                 rest_of_patches_list = [image[j].unsqueeze(0) for j in range(image.shape[0]) if j != i]
-                print(rest_of_patches_list[0].size())
-                # atten
-                print("3")
                 params = [H_q[batch_idx].unsqueeze(0), image_patch.unsqueeze(0)] + rest_of_patches_list
                 patches_atten.append(self.atten(params)[1])
-                print("4")
-            new_X_v.append(torch.stack(patches_atten))
+            new_X_v.append(torch.stack(patches_atten, dim=1))
         X_v = torch.cat(new_X_v, dim=0)
+        '''
+        # num of patches
+        N = split_images[0].shape[0]
+        patches_atten = []
+
+        for i in range(N):
+            center_patch = torch.stack([split_images[j][i] for j in range(len(split_images))])
+            rest_patches = [torch.stack([split_images[j][k] for j in range(len(split_images))]) 
+                            for k in range(N) if k != i]
+            params = [H_q, center_patch] + rest_patches
+            print(len(params))
+            out = self.atten(params)[1]
+            patches_atten.append(out)
+
+        X_v= torch.stack(patches_atten, dim=1)
+        
+        print(f"the size of X_v: {X_v.shape}")
         # project 
         image_features = self.get_model().mm_projector(X_v)
-
+        print(f"the size of image_features: {image_features.shape}")
         image_features = self.get_visual_tokens(images, image_features, image_sizes)
-
+        print(f"the size of image_features #2: {len(image_features)}")
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = num_images_per_batch[batch_idx]
             cur_new_input_embeds = []
