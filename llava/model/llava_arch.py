@@ -213,14 +213,17 @@ class LlavaMetaForCausalLM(ABC):
         return self.atten
     
     def get_visual_tokens(self, images, image_features, image_sizes = None):
-        #split_sizes = [image.shape[0] for image in images]
-        split_sizes = images.shape[1]
+        split_sizes = [image.shape[0] for image in images]
         image_features = torch.split(image_features, split_sizes, dim=0)
+        # NOTE: here i don't understand
+        return image_features
         #mm_patch_merge_type = getattr(self.config, 'mm_patch_merge_type', 'flat')
         mm_patch_merge_type = 'flat'
         image_aspect_ratio = getattr(self.config, 'image_aspect_ratio', 'square')
         if mm_patch_merge_type == 'flat':
+            print(f"image features: {len(image_features)}, {image_features[0].shape}")
             image_features = [x.flatten(0, 1) for x in image_features]
+            print(f"image features: {len(image_features)}, {image_features[0].shape}")
         elif mm_patch_merge_type.startswith('spatial'):
             new_image_features = []
             for image_idx, image_feature in enumerate(image_features):
@@ -354,6 +357,8 @@ class LlavaMetaForCausalLM(ABC):
             new_X_v.append(torch.stack(patches_atten, dim=1))
         X_v = torch.cat(new_X_v, dim=0)
         '''
+
+        # size flow: [B, N, 576, 1024] -> (FGA) [B, N, 1024] -> [B, N, 1, 1024] -> [B, N, 1, 4096] -> (flatten) [B, N, 4096]
         # num of patches
         N = split_images[0].shape[0]
         patches_atten = []
@@ -367,24 +372,26 @@ class LlavaMetaForCausalLM(ABC):
             out = self.atten(params)[1]
             patches_atten.append(out)
 
-        X_v= torch.stack(patches_atten, dim=1)
-        
+        X_v = torch.cat(patches_atten, dim=0)
         print(f"the size of X_v: {X_v.shape}")
-        # project 
         image_features = self.get_model().mm_projector(X_v)
         print(f"the size of image_features: {image_features.shape}")
+        # deconcatenate the image features
         image_features = self.get_visual_tokens(images, image_features, image_sizes)
-        print(f"the size of image_features #2: {len(image_features)}")
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = num_images_per_batch[batch_idx]
             cur_new_input_embeds = []
             cur_new_labels = []
             
             for i in range(num_images + 1):
+                print(f"size of i {i}")
+                print(f"size of num_images {num_images}")
+                print(f"size of cur_input_embeds_no_im[i] {cur_input_embeds_no_im[i].shape}")
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
                 if i < num_images:
                     cur_image_features = image_features[cur_image_idx]
+                    print(f"size of cur_image_features {cur_image_features.shape}")
                     cur_image_idx += 1
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))

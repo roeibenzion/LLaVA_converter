@@ -962,7 +962,7 @@ def train(attn_implementation=None):
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)
             #NOTE: adjust resolution
         # Assume model_args.image_resolution gives the base patch size, e.g., (patch_width, patch_height)
-        patches_height = model_args.num_patches_heigh
+        patches_height = model_args.num_patches_height
         patches_width = model_args.num_patches_width
         full_width = patches_width * 336  
         full_height = patches_height * 336  
