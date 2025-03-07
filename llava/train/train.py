@@ -969,19 +969,16 @@ def train(attn_implementation=None):
         grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
         if model_args.fga:
-            sharing_factor = {}
-            # for patch2patch assuming you have 37 patches
-            # sharing_factor = {0:(36, [i for i in range(2, 38)])}
-            # 576
-            # 576 spatial dimension.
-            #sizes = [None, 576]
             num_of_patches = patches_height * patches_width + 1
             sizes = [None] 
             sizes.extend([576 for _ in range(num_of_patches)])
             text_dimension = model.config.hidden_size
             vision_dimension = vision_tower.config.hidden_size
-            # util_e = [text_dimension, vision_dimension]
             util_e = [text_dimension] + [vision_dimension for _ in range(num_of_patches)]
+            sharing_factor = {}
+            for i in range(1, num_of_patches + 1):
+                # NOTE: only one util for now which is the text
+                sharing_factor[i] = (1, [0])
             model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
 
     if training_args.bits in [4, 8]:
