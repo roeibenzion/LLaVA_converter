@@ -1,0 +1,26 @@
+kube_bash_storage
+mkdir llava_fga
+cd ./llava_fga
+local2storage LLaVA_converter .
+cd ./LLaVA_converter 
+nano get_llava_data
+copy:
+#!/bin/bash
+
+# Define variables
+SOURCE="roeibenzion@132.66.38.86:/media/data1/roeibenzion/roeibenzion/LLaVA_baseline"
+DESTINATION="."
+
+# Run rsync with exclusions
+rsync -avzP \
+    --include='playground/data/llava_pretrain/' \
+    --include='playground/data/vg/' \
+    --include='playground/data/vg2/' \
+    --include='playground/data/vg1/' \
+    --include='playground/data/ocr_vqa/' \
+    --include='playground/data/coco/' \
+    --include='playground/data/gqa/' \
+    --exclude='playground/data/*' \
+    --ignore-existing \
+    "$SOURCE" "$DESTINATION"
+

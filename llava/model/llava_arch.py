@@ -212,82 +212,70 @@ class LlavaMetaForCausalLM(ABC):
         self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force)
         return self.atten
     
-    def get_visual_tokens(self, images, image_features, image_sizes = None):
-        split_sizes = [image.shape[0] for image in images]
-        image_features = torch.split(image_features, split_sizes, dim=0)
-        # NOTE: here i don't understand
-        return image_features
-        #mm_patch_merge_type = getattr(self.config, 'mm_patch_merge_type', 'flat')
-        mm_patch_merge_type = 'flat'
-        image_aspect_ratio = getattr(self.config, 'image_aspect_ratio', 'square')
-        if mm_patch_merge_type == 'flat':
-            print(f"image features: {len(image_features)}, {image_features[0].shape}")
-            image_features = [x.flatten(0, 1) for x in image_features]
-            print(f"image features: {len(image_features)}, {image_features[0].shape}")
-        elif mm_patch_merge_type.startswith('spatial'):
-            new_image_features = []
-            for image_idx, image_feature in enumerate(image_features):
-                if image_feature.shape[0] > 1:
-                    base_image_feature = image_feature[0]
-                    image_feature = image_feature[1:]
-                    height = width = self.get_vision_tower().num_patches_per_side
-                    assert height * width == base_image_feature.shape[0]
-                    if image_aspect_ratio == 'anyres':
-                        '''
-                        try:num_patch_width, num_patch_height = get_anyres_image_grid_shape(image_sizes[image_idx], self.config.image_grid_pinpoints, self.get_vision_tower().config.image_size)
-                        except Exception as e:
-                            print(f"Anyres Error: {e}")
-                            num_patch_width, num_patch_height = 2, 2
-                        '''
-                        num_patch_width, num_patch_height = 2, 2
-                        image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
-                    else:
-                        raise NotImplementedError
-                    if 'unpad' in mm_patch_merge_type:
-                        print("before first unpad: ", image_feature.shape)
-                        image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
-                        print("after first unpad: ", image_feature.shape)
-                        image_feature = image_feature.flatten(1, 2).flatten(2, 3)
-                        print("after second unpad: ", image_feature.shape)
-                        image_feature = unpad_image(image_feature, image_sizes[image_idx])
-                        print("after third unpad: ", image_feature.shape)
-                        image_feature = torch.cat((
-                            image_feature,
-                            self.model.image_newline[:, None, None].expand(*image_feature.shape[:-1], 1).to(image_feature.device)
-                        ), dim=-1)
-                        image_feature = image_feature.flatten(1, 2).transpose(0, 1)
-                    else:
-                        image_feature = image_feature.permute(0, 2, 1, 3, 4).contiguous()
-                        image_feature = image_feature.flatten(0, 3)
-                        print(image_feature.shape)
-                    image_feature = torch.cat((base_image_feature, image_feature), dim=0)
-                else:
-                    image_feature = image_feature[0]
-                    if 'unpad' in mm_patch_merge_type:
-                        image_feature = torch.cat((
-                            image_feature,
-                            self.model.image_newline[None].to(image_feature.device)
-                        ), dim=0)
-                new_image_features.append(image_feature)
-            image_features = new_image_features
-        else:
-            raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
-        return image_features
-    def inputs_for_atten(self, input_ids, position_ids, attention_mask, past_key_values, labels,
-        images, image_sizes=None):
-        print("1")
+
+    def get_textual_tokens(self, input_ids, labels, max_len=50):
+        '''
+        provide max_len = None for no pad
+        '''
+        H_q = []
+        new_input_embeds = []
+        new_labels = []
+        cur_image_idx = 0
+        for batch_idx, cur_input_ids in enumerate(input_ids):
+            num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
+            if num_images == 0:
+                cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
+                H_q.append(cur_input_embeds_1)
+                continue
+            
+            cur_input_ids_noim = []
+            cur_labels = labels[batch_idx]
+            cur_labels_noim = []
+            image_token_indices = [-1] + torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0].tolist() + [cur_input_ids.shape[0]]
+            for i in range(len(image_token_indices) - 1):
+                cur_input_ids_noim.append(cur_input_ids[image_token_indices[i]+1:image_token_indices[i+1]])
+                cur_labels_noim.append(cur_labels[image_token_indices[i]+1:image_token_indices[i+1]])
+            split_sizes = [x.shape[0] for x in cur_labels_noim]
+            cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
+            cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
+            H_q.append(cur_input_embeds_no_im[-1])
+        
+        if max_len:
+            for i in range(len(H_q)):
+                #NOTE: size of embedding should be the same for all samples. They did it with 21, i'll do it with more.
+                H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
+            H_q = torch.stack(H_q)
+        #(b, max,len, 4096)
+        return H_q
+    
+    def get_image_features(self, images, num_patches_per_image):
+        # expectation (b, n+1, c, w, h)
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
-                num_patches_per_image = [image.shape[0] for image in images]
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
-            else:
-                num_patches_per_image = [image.shape[0] for image in images]
             concat_images = torch.cat([image for image in images], dim=0)
+            # expectation (b*(n+1), c, w, h)
             image_features = self.encode_images_no_proj(concat_images)
-            print("2")
+            # expectation (b*(n+1), 576, 1024)
         else:
             image_features = self.encode_images_no_proj(images)
-        X_v = image_features
+        # (b*(n+1), 576, 1024)
+        image_features = torch.split(image_features, num_patches_per_image, dim=0)
+        # (b, n+1, 576, 1024)
+        return image_features
+
+    def apply_fga_on_visual_features(self, X_v, H_q, max_len = 50):
+        '''
+        input:
+        1. X_v = visual features of size 
+        2. H_q = testual tokens
+        3. max_len = len to pad text
+        output: 
+        '''
+        pass
+    def inputs_for_atten(self, input_ids, position_ids, attention_mask, past_key_values, labels,
+        images, image_sizes=None):
+        num_patches_per_image = [image.shape[0] for image in images]
         # Let's just add dummy tensors if they do not exist,
         # it is a headache to deal with None all the time.
         # But it is not ideal, and if you have a better idea,
@@ -308,17 +296,44 @@ class LlavaMetaForCausalLM(ABC):
         input_ids = [cur_input_ids[cur_attention_mask] for cur_input_ids, cur_attention_mask in zip(input_ids, attention_mask)]
         labels = [cur_labels[cur_attention_mask] for cur_labels, cur_attention_mask in zip(labels, attention_mask)]
 
+        X_v = self.get_image_features(images, num_patches_per_image)
+        H_q = self.get_textual_tokens(input_ids, labels)
+
+        split_images = X_v
+        N = X_v[0].shape[0]
+        patches_atten = []
+        for i in range(N):
+            center_patch = torch.stack([split_images[j][i] for j in range(len(split_images))])
+            # size (b, 576, 1024)
+            rest_patches = [torch.stack([split_images[j][k] for j in range(len(split_images))]) 
+                            for k in range(N) if k != i]
+            # size [(b, 576, 1024) for n]
+            params = [H_q, center_patch] + rest_patches
+            out = self.atten(params)[1]
+            patches_atten.append(out)
+        # (n+1, b, 1024)
+        X_v = torch.stack(patches_atten, dim=1)
+        # (b, n+1, 1024)
+        concat_X_v = torch.cat([X_v[i] for i in range(X_v.shape[0])], dim=0)
+        # (b*(n+1), 1024)
+        image_features = self.get_model().mm_projector(concat_X_v)
+        # (b*(n+1), 4096)
+        split_sizes = [image.shape[0] for image in images]
+        image_features = torch.split(image_features, split_sizes, dim=0)
+        # (b, n+1, 4096)
+        # The idea of flatten is when you have (b, n, 576, 4096) and you need (b, k, 4096) you reduce dim by falttening and have k = n*576. We don't need it.
+        #image_features = [x.flatten(0, 1) for x in image_features]
+        # (b, (n+1)*4096)
+
         new_input_embeds = []
         new_labels = []
         cur_image_idx = 0
-        H_q = []
         num_images_per_batch = []
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
             if num_images == 0:
                 cur_image_features = image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
-                H_q.append(cur_input_embeds_1)
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0]], dim=0)
                 new_input_embeds.append(cur_input_embeds)
                 new_labels.append(labels[batch_idx])
@@ -335,69 +350,22 @@ class LlavaMetaForCausalLM(ABC):
             split_sizes = [x.shape[0] for x in cur_labels_noim]
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
-            H_q.append(cur_input_embeds_no_im[-1])
             num_images_per_batch.append(num_images)
-        # pad the text tokens to the same length
-        max_len = 50
-        for i in range(len(H_q)):
-            #NOTE: size of embedding should be the same for all samples. They did it with 21, i'll do it with more.
-            H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
-        H_q = torch.stack(H_q)
-        # iterate over the image patches
-        split_images = torch.split(X_v, num_patches_per_image, dim=0)
-        '''
-        new_X_v = []
-        for batch_idx, image in enumerate(split_images):
-            patches_atten = []
-            for i in range(image.shape[0]):
-                image_patch = image[i]
-                rest_of_patches_list = [image[j].unsqueeze(0) for j in range(image.shape[0]) if j != i]
-                params = [H_q[batch_idx].unsqueeze(0), image_patch.unsqueeze(0)] + rest_of_patches_list
-                patches_atten.append(self.atten(params)[1])
-            new_X_v.append(torch.stack(patches_atten, dim=1))
-        X_v = torch.cat(new_X_v, dim=0)
-        '''
 
-        # size flow: [B, N, 576, 1024] -> (FGA) [B, N, 1024] -> [B, N, 1, 1024] -> [B, N, 1, 4096] -> (flatten) [B, N, 4096]
-        # num of patches
-        N = split_images[0].shape[0]
-        patches_atten = []
-
-        for i in range(N):
-            center_patch = torch.stack([split_images[j][i] for j in range(len(split_images))])
-            rest_patches = [torch.stack([split_images[j][k] for j in range(len(split_images))]) 
-                            for k in range(N) if k != i]
-            params = [H_q, center_patch] + rest_patches
-            print(len(params))
-            out = self.atten(params)[1]
-            patches_atten.append(out)
-
-        X_v = torch.cat(patches_atten, dim=0)
-        print(f"the size of X_v: {X_v.shape}")
-        image_features = self.get_model().mm_projector(X_v)
-        print(f"the size of image_features: {image_features.shape}")
-        # deconcatenate the image features
-        image_features = self.get_visual_tokens(images, image_features, image_sizes)
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = num_images_per_batch[batch_idx]
             cur_new_input_embeds = []
             cur_new_labels = []
-            
             for i in range(num_images + 1):
-                print(f"size of i {i}")
-                print(f"size of num_images {num_images}")
-                print(f"size of cur_input_embeds_no_im[i] {cur_input_embeds_no_im[i].shape}")
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
                 if i < num_images:
                     cur_image_features = image_features[cur_image_idx]
-                    print(f"size of cur_image_features {cur_image_features.shape}")
                     cur_image_idx += 1
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
 
             cur_new_input_embeds = [x.to(self.device) for x in cur_new_input_embeds]
-
             cur_new_input_embeds = torch.cat(cur_new_input_embeds)
             cur_new_labels = torch.cat(cur_new_labels)
 

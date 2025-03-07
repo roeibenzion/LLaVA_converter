@@ -195,7 +195,6 @@ class Atten(nn.Module):
                     continue
                 else:
                     high_util = utils[i]
-                    print(utils[i].size(), i)
                     high_util = high_util.view(num_utils * b_size, high_util.size(2), high_util.size(3))
                     high_util = high_util.transpose(1, 2)
                     utils[i] = self.spatial_pool[str(i)](high_util).transpose(1, 2)
@@ -205,7 +204,6 @@ class Atten(nn.Module):
                         or str(i) not in self.spatial_pool.keys():
                     continue
                 utils[i] = utils[i].transpose(1, 2)
-                print(self.spatial_pool[str(i)])
                 utils[i] = self.spatial_pool[str(i)](utils[i]).transpose(1, 2)
                 if self.prior_flag and priors[i] is not None:
                     priors[i] = self.spatial_pool[str(i)](priors[i].unsqueeze(1)).squeeze(1)
