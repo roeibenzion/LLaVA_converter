@@ -979,7 +979,9 @@ def train(attn_implementation=None):
             for i in range(1, num_of_patches + 1):
                 # NOTE: only one util for now which is the text
                 sharing_factor[i] = (1, [0])
-            model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
+            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
+            names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
+            fga.show_attention_graph(names)
 
     if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer

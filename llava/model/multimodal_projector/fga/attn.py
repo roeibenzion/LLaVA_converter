@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from itertools import product, permutations, combinations_with_replacement, chain
-
+import networkx as nx
+import matplotlib.pyplot as plt
 
 class Unary(nn.Module):
     def __init__(self, embed_size):
@@ -178,6 +179,7 @@ class Atten(nn.Module):
             self.reduce_potentials.append(nn.Conv1d(self.num_of_potentials[idx],
                                                     1, 1, bias=False))
 
+
     def forward(self, utils, priors=None):
         assert self.n_utils == len(utils)
         assert (priors is None and not self.prior_flag) \
@@ -270,8 +272,63 @@ class Atten(nn.Module):
             util_factors[i] = self.reduce_potentials[i](util_factors[i]).squeeze(1)
             util_factors[i] = F.softmax(util_factors[i], dim=1).unsqueeze(2)
             attention.append(torch.bmm(utils[i].transpose(1, 2), util_factors[i]).squeeze(2))
-
         return attention
+    
+
+    def show_attention_graph(self, names = None):
+        """
+        Visualize the attention graph from an Atten module in Google Colab.
+        
+        Each node represents a utility (indexed by its position).
+        An edge is drawn between two nodes if there is a pairwise interaction
+        (or a self-connection) defined in the module's pp_models.
+        
+        Parameters:
+            self: An instance of the Atten class.
+        """
+        # Create an empty undirected graph
+        G = nx.Graph()
+        
+        # Add nodes for each utility
+        num_utilities = self.n_utils
+        G.add_nodes_from(range(num_utilities))
+        
+        # Helper function to parse keys in pp_models
+        def parse_key(key):
+            if key.startswith("(") and key.endswith(")"):
+                parts = key.strip("()").split(",")
+                return tuple(int(part.strip()) for part in parts)
+            else:
+                return int(key)  # Self-connection case
+        
+        # Add edges based on pairwise interactions
+        for key in self.pp_models.keys():
+            parsed = parse_key(key)
+            if isinstance(parsed, tuple):
+                u, v = parsed
+                G.add_edge(u, v)
+            else:
+                G.add_edge(parsed, parsed)  # Self-loop
+
+        # Set up the figure size
+        plt.figure(figsize=(6, 6))
+
+        # Compute layout
+        pos = nx.spring_layout(G)
+
+        # Set labels based on names if provided
+        labels = {i: names[i] for i in range(num_utilities)} if names else None
+        
+        # Draw the graph
+        nx.draw(
+            G, pos, with_labels=True, labels=labels, node_color='lightblue', 
+            edge_color='gray', node_size=700, font_size=12
+        )
+
+        plt.savefig("attention_graph.png")
+        plt.close()
+        
+
 
 
 class NaiveAttention(nn.Module):

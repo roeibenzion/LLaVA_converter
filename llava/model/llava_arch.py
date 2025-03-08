@@ -264,15 +264,6 @@ class LlavaMetaForCausalLM(ABC):
         # (b, n+1, 576, 1024)
         return image_features
 
-    def apply_fga_on_visual_features(self, X_v, H_q, max_len = 50):
-        '''
-        input:
-        1. X_v = visual features of size 
-        2. H_q = testual tokens
-        3. max_len = len to pad text
-        output: 
-        '''
-        pass
     def inputs_for_atten(self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images, image_sizes=None):
         num_patches_per_image = [image.shape[0] for image in images]
