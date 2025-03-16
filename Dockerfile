@@ -2,7 +2,9 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-20.04
 
 SHELL [ "bash", "-c" ]
 
-# Update apt and install necessary packages
+#-------------------------------------------------
+# 1) System packages
+#-------------------------------------------------
 RUN apt update && \
     apt install -yq \
         ffmpeg \
@@ -16,35 +18,40 @@ RUN apt update && \
         wget \
         git
 
-# Install git-lfs
+# Git LFS
 RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash && \
     sudo apt-get install -yq git-lfs && \
     git lfs install
 
-############################################
-# Setup user
-############################################
-
+#-------------------------------------------------
+# 2) User setup
+#-------------------------------------------------
 USER vscode
 
-# Setup conda environment
+#-------------------------------------------------
+# 3) Miniconda installation
+#-------------------------------------------------
 RUN cd /tmp && \
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
     bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3 && \
     rm ./Miniconda3-latest-Linux-x86_64.sh
 
-# Add conda to PATH
 ENV PATH="/home/vscode/miniconda3/bin:${PATH}"
 
-# Setup Python environment (modify based on project's requirements)
-COPY cog.yaml /tmp/environment.yaml
-RUN conda env create -n env -f /tmp/environment.yaml && \
+#-------------------------------------------------
+# 4) Copy environment file and create environment
+#-------------------------------------------------
+WORKDIR /app
+COPY environment.yml /tmp/environment.yml
+
+# Remove old environment if it exists, then create a fresh one
+RUN conda env remove -n llava_yaml -y || true && \
+    conda env create -f /tmp/environment.yml && \
     conda clean -afy
 
-# Activate conda environment by default
-RUN echo "source activate $(head -1 /tmp/environment.yaml | cut -d' ' -f2)" >> ~/.bashrc
-
-# Install dotnet
+#-------------------------------------------------
+# 5) Install dotnet (optional, if you really need it)
+#-------------------------------------------------
 RUN cd /tmp && \
     wget https://dot.net/v1/dotnet-install.sh && \
     chmod +x dotnet-install.sh && \
@@ -52,15 +59,21 @@ RUN cd /tmp && \
     ./dotnet-install.sh --channel 3.1 && \
     rm ./dotnet-install.sh
 
-# Set working directory
-WORKDIR /app
-
-# Copy project files into container
+#-------------------------------------------------
+# 6) Copy in your project
+#-------------------------------------------------
 COPY . /app
 
+# Switch to root just to chmod your script
 USER root
-# Ensure script is executable
 RUN chmod +x ./scripts/v1_5/anyres_pretrain.sh
+
+# Switch back to vscode for final
 USER vscode
-# Entry point
-ENTRYPOINT ["./scripts/v1_5/anyres_pretrain.sh"]
+
+#-------------------------------------------------
+# 7) Entry point
+#-------------------------------------------------
+# Instead of "source activate", which can be tricky in non-interactive shells,
+# use 'conda run' to ensure the environment is active when your script runs.
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "llava_yaml", "bash", "-x", "./scripts/v1_5/anyres_pretrain.sh"]
