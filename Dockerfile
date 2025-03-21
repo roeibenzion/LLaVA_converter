@@ -76,4 +76,4 @@ USER vscode
 #-------------------------------------------------
 # Instead of "source activate", which can be tricky in non-interactive shells,
 # use 'conda run' to ensure the environment is active when your script runs.
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "llava_yaml", "bash", "-x", "./scripts/v1_5/anyres_pretrain.sh"]
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "llava_yaml", "bash", "./scripts/v1_5/anyres_pretrain.sh"]
