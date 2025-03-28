@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-20.04
 SHELL [ "bash", "-c" ]
 
 #-------------------------------------------------
-# 1) System packages
+# 1) Install System Packages
 #-------------------------------------------------
 RUN apt update && \
     apt install -yq \
@@ -24,33 +24,46 @@ RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.d
     git lfs install
 
 #-------------------------------------------------
-# 2) User setup
+# 2) Working Directory & Code
+#    Put code in /app instead of /storage
 #-------------------------------------------------
-USER vscode
+WORKDIR /app
+
+# Copy the environment file *before* the rest of your code
+# so that Docker can cache the env creation if environment.yml doesn't change often
+COPY environment.yml /tmp/environment.yml
+
+# Then copy your entire codebase into /app
+COPY . /app
 
 #-------------------------------------------------
-# 3) Miniconda installation
+# 3) Install Miniconda
 #-------------------------------------------------
 RUN cd /tmp && \
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
-    bash ./Miniconda3-latest-Linux-x86_64.sh -b -p $HOME/miniconda3 && \
+    bash ./Miniconda3-latest-Linux-x86_64.sh -b -p /home/vscode/miniconda3 && \
     rm ./Miniconda3-latest-Linux-x86_64.sh
 
-ENV PATH="/home/vscode/miniconda3/bin:${PATH}"
+# Ensure conda is on PATH in all subsequent commands
+ENV PATH="/home/vscode/miniconda3/bin:$PATH"
 
 #-------------------------------------------------
-# 4) Copy environment file and create environment
+# 4) Create Conda Environment
 #-------------------------------------------------
-WORKDIR /app
-COPY environment.yml /tmp/environment.yml
-
-# Remove old environment if it exists, then create a fresh one
 RUN conda env remove -n llava_yaml -y || true && \
     conda env create -f /tmp/environment.yml && \
     conda clean -afy
 
+# Optionally install flash-attn if CUDA is present
+RUN if command -v nvcc >/dev/null 2>&1; then \
+    echo "✅ CUDA detected — installing flash-attn..." && \
+    conda run -n llava_yaml pip install flash-attn --no-build-isolation --no-cache-dir; \
+else \
+    echo "⚠️  Skipping flash-attn install — CUDA not found"; \
+fi
+
 #-------------------------------------------------
-# 5) Install dotnet (optional, if you really need it)
+# 5) (Optional) Dotnet Installation
 #-------------------------------------------------
 RUN cd /tmp && \
     wget https://dot.net/v1/dotnet-install.sh && \
@@ -60,20 +73,12 @@ RUN cd /tmp && \
     rm ./dotnet-install.sh
 
 #-------------------------------------------------
-# 6) Copy in your project
+# 6) Make Your Training Script Executable
 #-------------------------------------------------
-COPY . /app
-
-# Switch to root just to chmod your script
-USER root
-RUN chmod +x ./scripts/v1_5/anyres_pretrain.sh
-
-# Switch back to vscode for final
-USER vscode
+RUN chmod +x /app/scripts/v1_5/anyres_pretrain.sh
 
 #-------------------------------------------------
-# 7) Entry point
+# 7) Entry Point
+#    Use 'conda run' to ensure the llava_yaml env is active
 #-------------------------------------------------
-# Instead of "source activate", which can be tricky in non-interactive shells,
-# use 'conda run' to ensure the environment is active when your script runs.
-ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "llava_yaml", "bash", "./scripts/v1_5/anyres_pretrain.sh"]
+ENTRYPOINT ["conda", "run", "--no-capture-output", "-n", "llava_yaml", "bash", "/app/scripts/v1_5/anyres_pretrain.sh"]
