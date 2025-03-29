@@ -162,6 +162,7 @@ def build_vision_projector(config, delay_load=False, **kwargs):
             modules.append(nn.GELU())
             modules.append(nn.Linear(config.hidden_size, config.hidden_size))
             #modules.append(nn.Linear(4096, 4096))
+        print("YOURE IN mlp_gelu_match")
         return nn.Sequential(*modules)
 
     if projector_type == 'identity':
