@@ -211,6 +211,20 @@ class LLaVATrainer(Trainer):
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
+            print("\n[DEBUG] Checking for FGA parameters in optimizer:")
+            found_fga = False
+            for group_idx, group in enumerate(self.optimizer.param_groups):
+                for p in group["params"]:
+                    for name, param in opt_model.named_parameters():
+                        if p is param and "fga" in name.lower():
+                            print(f"[FGA Param] Found in optimizer | group {group_idx} | {name} | shape: {tuple(p.shape)}")
+                            found_fga = True
+
+            if not found_fga:
+                print("❌ No FGA parameters found in optimizer! They might not be trainable or attached to the model.")
+            else:
+                print("✅ FGA parameters are correctly included in the optimizer.")
+
             if optimizer_cls.__name__ == "Adam8bit":
                 import bitsandbytes
 
