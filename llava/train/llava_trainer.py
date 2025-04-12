@@ -146,6 +146,42 @@ class LLaVATrainer(Trainer):
             )
         else:
             return super()._get_train_sampler()
+        
+    def log_optimizer_parameters(self, model, optimizer_grouped_parameters):
+        print("\n🔍 ========== Optimizer Parameter Report ==========\n")
+        all_named_params = dict(model.named_parameters())
+        included_param_ids = set()
+        
+        total_params = 0
+        for i, group in enumerate(optimizer_grouped_parameters):
+            print(f"\n🧩 Optimizer Group {i} — weight_decay={group.get('weight_decay', 'default')}, lr={group.get('lr', 'default')}")
+            group_param_count = 0
+            for p in group["params"]:
+                included_param_ids.add(p.data_ptr())
+                for name, param in all_named_params.items():
+                    if p is param:
+                        print(f"  ✅ {name:<60} | shape={tuple(param.shape)} | size={param.numel():,}")
+                        group_param_count += param.numel()
+                        break
+            total_params += group_param_count
+            print(f"  📦 Group {i} total parameters: {group_param_count:,}")
+        
+        print(f"\n🧮 Total parameters in optimizer: {total_params:,}")
+
+        # Check if any requires_grad=True params were missed
+        missed = []
+        for name, param in all_named_params.items():
+            if param.requires_grad and param.data_ptr() not in included_param_ids:
+                missed.append(name)
+        
+        if missed:
+            print(f"\n⚠️ WARNING: {len(missed)} parameters with requires_grad=True NOT in optimizer:")
+            for name in missed:
+                print(f"  ❌ {name}")
+        else:
+            print("\n✅ All trainable parameters are included in the optimizer.")
+        
+        print("\n==================================================\n")
 
     def create_optimizer(self):
         """
@@ -164,6 +200,7 @@ class LLaVATrainer(Trainer):
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
             if self.args.mm_projector_lr is not None:
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
+                print("Adding FGA to optimizer")
                 optimizer_grouped_parameters = [
                     {
                         "params": [
@@ -191,6 +228,11 @@ class LLaVATrainer(Trainer):
                         "weight_decay": 0.0,
                         "lr": self.args.mm_projector_lr,
                     },
+                    {
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n.startswith("atten") and p.requires_grad)
+                        ],
+                    }
                 ]
             else:
                 optimizer_grouped_parameters = [
@@ -210,21 +252,13 @@ class LLaVATrainer(Trainer):
 
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
+            self.log_optimizer_parameters(opt_model, optimizer_grouped_parameters)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-            print("\n[DEBUG] Checking for FGA parameters in optimizer:")
-            found_fga = False
-            for group_idx, group in enumerate(self.optimizer.param_groups):
-                for p in group["params"]:
-                    for name, param in opt_model.named_parameters():
-                        if p is param and "fga" in name.lower():
-                            print(f"[FGA Param] Found in optimizer | group {group_idx} | {name} | shape: {tuple(p.shape)}")
-                            found_fga = True
-
-            if not found_fga:
-                print("❌ No FGA parameters found in optimizer! They might not be trainable or attached to the model.")
-            else:
-                print("✅ FGA parameters are correctly included in the optimizer.")
-
+            for module in opt_model.modules():
+                # if it requires grad, it should be in the optimizer
+                if hasattr(module, "weight") and module.weight.requires_grad:
+                    print(module)
+        
             if optimizer_cls.__name__ == "Adam8bit":
                 import bitsandbytes
 
@@ -232,6 +266,7 @@ class LLaVATrainer(Trainer):
 
                 skipped = 0
                 for module in opt_model.modules():
+                    print(module)
                     if isinstance(module, nn.Embedding):
                         skipped += sum({p.data_ptr(): p.numel() for p in module.parameters()}.values())
                         logger.info(f"skipped {module}: {skipped/2**20}M params")
