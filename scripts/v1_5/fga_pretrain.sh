@@ -12,7 +12,6 @@ deepspeed llava/train/train_mem.py \
     --mm_vision_select_layer -2 \
     --mm_use_im_start_end False \
     --mm_use_im_patch_token False \
-    --mm_patch_merge_type spatial \
     --image_aspect_ratio "anyres" \
     --image_grid_pinpoints  "(1x1),...,(6x6)" \
     --fga True \
@@ -24,7 +23,7 @@ deepspeed llava/train/train_mem.py \
     --gradient_accumulation_steps 1 \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 1000 \
+    --save_steps 4500 \
     --save_total_limit 1 \
     --learning_rate 1e-3 \
     --weight_decay 0. \

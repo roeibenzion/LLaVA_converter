@@ -41,6 +41,36 @@ from llava import mm_utils
 
 local_rank = None
 
+from transformers import TrainerCallback, TrainerState, TrainerControl
+
+class GradientLoggingCallback(TrainerCallback):
+    def on_step_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
+        # 1) Log loss if available
+        if state.log_history:
+            # last logged item
+            last_log = state.log_history[-1]
+            print(f"Step {state.global_step} - last log: {last_log}")
+
+        # 2) Log grad norms
+        # Because HF Trainer does not expose gradients by default, you'd need
+        # a special pass or a custom training loop to access .grad attributes.
+        # Or you can do something like:
+        model = kwargs.get("model", None)
+        if model is not None:
+            total_norm = 0.0
+            for n, p in model.named_parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2).item()
+                    total_norm += param_norm ** 2
+                    # Only log projector or atten
+                    if "mm_projector" in n or "atten" in n:
+                        print(f"  Grad norm for {n}: {param_norm:.4f}")
+            total_norm = total_norm ** 0.5
+            print(f"  --> Total grad norm: {total_norm:.4f}")
+
+        return control
+
+
 
 def rank0_print(*args):
     if local_rank == 0:
@@ -1003,6 +1033,7 @@ def train(attn_implementation=None):
     trainer = LLaVATrainer(model=model,
                     tokenizer=tokenizer,
                     args=training_args,
+                    callbacks=[GradientLoggingCallback],
                     **data_module)
 
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
