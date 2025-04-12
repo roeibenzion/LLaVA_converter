@@ -36,15 +36,6 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
 
     def __init__(self, config: LlamaConfig):
         super(LlavaLlamaModel, self).__init__(config)
-        # TODO: make it modular
-        self.reconstruction_head = None
-        '''
-        # ADDITION: reconstruction head
-        if hasattr(config, 'reconstruction_head'):
-            self.reconstruction_head = nn.Linear(config.hidden_size, 1024)
-        else:
-            self.reconstruction_head = None
-        '''
 
 class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     config_class = LlavaConfig
@@ -55,8 +46,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.pretraining_tp = config.pretraining_tp
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        # TODO: make it modular
-        self.lambd = 0.05
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -113,27 +102,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict
         )
-
-        # Compute the supplementary loss only if labels are provided
-        if labels is not None and self.get_model().reconstruction_head is not None and not (type(images) is list or images.ndim == 5):
-            # Obtain image features and reconstructed features
-            x, y = self.get_image_features_and_multimodal(images)
-            x = self.get_model().reconstruction_head(x)
-
-            # Compute the supplementary loss term
-            loss_fn = nn.MSELoss()
-            y = y.detach() 
-            sup_loss = loss_fn(x, y)
-
-            # Add the supplementary loss to the main loss
-            if output.loss is not None:
-                output.loss = output.loss + sup_loss * self.lambd
-            else:
-                output.loss = sup_loss * self.lambd
-            print(f"Computing supplementary loss: {sup_loss} out of {output.loss}")
-
-            # Optionally, add reconstructed features to output
-            output.reconstructed_features = x
 
         return output
 

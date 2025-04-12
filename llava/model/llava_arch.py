@@ -249,14 +249,14 @@ class LlavaMetaForCausalLM(ABC):
         return H_q
     
     def get_image_features(self, images, num_patches_per_image):
-        # expectation (b, n+1, c, w, h)
+        # (b, n+1, c, w, h)
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
             concat_images = torch.cat([image for image in images], dim=0)
-            # expectation (b*(n+1), c, w, h)
+            # (b*(n+1), c, w, h)
             image_features = self.encode_images_no_proj(concat_images)
-            # expectation (b*(n+1), 576, 1024)
+            # (b*(n+1), 576, 1024)
         else:
             image_features = self.encode_images_no_proj(images)
         # (b*(n+1), 576, 1024)
@@ -428,53 +428,35 @@ class LlavaMetaForCausalLM(ABC):
         vision_tower = self.get_vision_tower()
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
             return input_ids, position_ids, attention_mask, past_key_values, None, labels
+
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
             concat_images = torch.cat([image for image in images], dim=0)
-            if use_attn:
-                print(f"before encode images {concat_images.shape}")
-                image_features = self.encode_images_no_proj(concat_images)
-            else:
-                image_features = self.encode_images(concat_images)
+            image_features = self.encode_images(concat_images)
             split_sizes = [image.shape[0] for image in images]
             image_features = torch.split(image_features, split_sizes, dim=0)
-            print(f"image features: {len(image_features)}")
             mm_patch_merge_type = getattr(self.config, 'mm_patch_merge_type', 'flat')
             image_aspect_ratio = getattr(self.config, 'image_aspect_ratio', 'square')
             if mm_patch_merge_type == 'flat':
                 image_features = [x.flatten(0, 1) for x in image_features]
-                X_v = torch.stack(image_features)
             elif mm_patch_merge_type.startswith('spatial'):
                 new_image_features = []
                 for image_idx, image_feature in enumerate(image_features):
                     if image_feature.shape[0] > 1:
-                        print("image feature shape: ", image_feature.shape)
                         base_image_feature = image_feature[0]
                         image_feature = image_feature[1:]
                         height = width = self.get_vision_tower().num_patches_per_side
                         assert height * width == base_image_feature.shape[0]
                         if image_aspect_ratio == 'anyres':
-                            '''
-                            try:num_patch_width, num_patch_height = get_anyres_image_grid_shape(image_sizes[image_idx], self.config.image_grid_pinpoints, self.get_vision_tower().config.image_size)
-                            except Exception as e:
-                                print(f"Anyres Error: {e}")
-                                num_patch_width, num_patch_height = 2, 2
-                            '''
-                            num_patch_width, num_patch_height = 2, 2
-                            print(f"before reshape: {image_feature.shape}")
+                            num_patch_width, num_patch_height = get_anyres_image_grid_shape(image_sizes[image_idx], self.config.image_grid_pinpoints, self.get_vision_tower().config.image_size)
                             image_feature = image_feature.view(num_patch_height, num_patch_width, height, width, -1)
-                            print(f"after reshape: {image_feature.shape}")
                         else:
                             raise NotImplementedError
                         if 'unpad' in mm_patch_merge_type:
-                            print("before first unpad: ", image_feature.shape)
                             image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
-                            print("after first unpad: ", image_feature.shape)
                             image_feature = image_feature.flatten(1, 2).flatten(2, 3)
-                            print("after second unpad: ", image_feature.shape)
                             image_feature = unpad_image(image_feature, image_sizes[image_idx])
-                            print("after third unpad: ", image_feature.shape)
                             image_feature = torch.cat((
                                 image_feature,
                                 self.model.image_newline[:, None, None].expand(*image_feature.shape[:-1], 1).to(image_feature.device)
@@ -483,7 +465,6 @@ class LlavaMetaForCausalLM(ABC):
                         else:
                             image_feature = image_feature.permute(0, 2, 1, 3, 4).contiguous()
                             image_feature = image_feature.flatten(0, 3)
-                            print(image_feature.shape)
                         image_feature = torch.cat((base_image_feature, image_feature), dim=0)
                     else:
                         image_feature = image_feature[0]
@@ -494,12 +475,11 @@ class LlavaMetaForCausalLM(ABC):
                             ), dim=0)
                     new_image_features.append(image_feature)
                 image_features = new_image_features
-                X_v = torch.stack(image_features)
             else:
                 raise ValueError(f"Unexpected mm_patch_merge_type: {self.config.mm_patch_merge_type}")
         else:
-             image_features = self.encode_images(images)
-             X_v = self.encode_images_no_proj(images)
+            image_features = self.encode_images(images)
+
         # TODO: image start / end is not implemented here to support pretraining.
         if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
             raise NotImplementedError
@@ -528,14 +508,11 @@ class LlavaMetaForCausalLM(ABC):
         new_input_embeds = []
         new_labels = []
         cur_image_idx = 0
-        H_q = []
-        num_images_per_batch = []
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
             if num_images == 0:
                 cur_image_features = image_features[cur_image_idx]
                 cur_input_embeds_1 = self.get_model().embed_tokens(cur_input_ids)
-                H_q.append(cur_input_embeds_1)
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0]], dim=0)
                 new_input_embeds.append(cur_input_embeds)
                 new_labels.append(labels[batch_idx])
@@ -552,12 +529,9 @@ class LlavaMetaForCausalLM(ABC):
             split_sizes = [x.shape[0] for x in cur_labels_noim]
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
-            H_q.append(cur_input_embeds_no_im[-1])
-            num_images_per_batch.append(num_images)
-            if use_attn:
-                continue
             cur_new_input_embeds = []
             cur_new_labels = []
+
             for i in range(num_images + 1):
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
@@ -574,53 +548,6 @@ class LlavaMetaForCausalLM(ABC):
 
             new_input_embeds.append(cur_new_input_embeds)
             new_labels.append(cur_new_labels)
-            print("here is size and len summery #1: ")
-            print(f"new input embeds: {len(new_input_embeds)}")
-            print(f"new labels: {len(new_labels)}")
-            print(f"new input embeds[0]: {new_input_embeds[0].shape}")
-            print(f"new labels[0]: {new_labels[0].shape}")
-        
-        if use_attn:
-            # pad the text tokens to the same length
-            max_len = 50
-            for i in range(len(H_q)):
-                #NOTE: size of embedding should be the same for all samples. They did it with 21, i'll do it with more.
-                H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
-            H_q = torch.stack(H_q)
-            # send H_q and X_v to the attention module
-            X_v = self.atten([H_q, X_v])[1]
-            X_v = X_v.to(self.get_model().mm_projector[0].weight.dtype)
-            # Get it to a one token represtation so [bs, 1, text_dim]
-            X_v = X_v.unsqueeze(1)
-            # project 
-            image_features = self.get_model().mm_projector(X_v)
-            # compensate for the loop in the previous code
-            for batch_idx, cur_input_ids in enumerate(input_ids):
-                num_images = num_images_per_batch[batch_idx]
-                cur_new_input_embeds = []
-                cur_new_labels = []
-                
-                for i in range(num_images + 1):
-                    cur_new_input_embeds.append(cur_input_embeds_no_im[i])
-                    cur_new_labels.append(cur_labels_noim[i])
-                    if i < num_images:
-                        cur_image_features = image_features[cur_image_idx]
-                        cur_image_idx += 1
-                        cur_new_input_embeds.append(cur_image_features)
-                        cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
-
-                cur_new_input_embeds = [x.to(self.device) for x in cur_new_input_embeds]
-
-                cur_new_input_embeds = torch.cat(cur_new_input_embeds)
-                cur_new_labels = torch.cat(cur_new_labels)
-
-                new_input_embeds.append(cur_new_input_embeds)
-                new_labels.append(cur_new_labels)
-                print("here is size and len summery #2: ")
-                print(f"new input embeds: {len(new_input_embeds)}")
-                print(f"new labels: {len(new_labels)}")
-                print(f"new input embeds[0]: {new_input_embeds[0].shape}")
-                print(f"new labels[0]: {new_labels[0].shape}")
 
         # Truncate sequences to max length as image embeddings can make the sequence longer
         tokenizer_model_max_length = getattr(self.config, 'tokenizer_model_max_length', None)
@@ -674,6 +601,7 @@ class LlavaMetaForCausalLM(ABC):
             position_ids = None
 
         return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels
+
 
     def initialize_vision_tokenizer(self, model_args, tokenizer):
         if model_args.mm_use_im_patch_token:

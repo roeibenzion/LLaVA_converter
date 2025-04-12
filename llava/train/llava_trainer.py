@@ -232,6 +232,8 @@ class LLaVATrainer(Trainer):
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n.startswith("atten") and p.requires_grad)
                         ],
+                        "weight_decay": 0.0,
+                        "lr": 1e-4,
                     }
                 ]
             else:
