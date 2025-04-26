@@ -198,9 +198,44 @@ class LLaVATrainer(Trainer):
         if self.optimizer is None:
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            if self.args.mm_projector_lr is not None:
+            if hasattr(opt_model, "fga"):
+                print("good")
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
-                print("Adding FGA to optimizer")
+                atten_parameters = [name for name, _ in opt_model.named_parameters() if "atten" in name]
+                optimizer_grouped_parameters = [
+                    
+                    { # all atten parameters
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in atten_parameters and p.requires_grad)
+
+                        ],
+                        "weight_decay": 0.0,
+                        "lr": 4e-4,
+                    },
+                    { # atten no weight decay
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in atten_parameters and p.requires_grad)
+                            ],
+                        "weight_decay": 0.0,
+                        "lr": 4e-4,
+                    },
+                    { # all projector parameters
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                        "lr": 5e-6,
+                    }, 
+                    { # no weight decay projector parameters
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
+                        ],
+                        "weight_decay": 0.0,
+                        "lr" : 5e-6,
+                    }
+                ]
+            elif self.args.mm_projector_lr is not None:
+                projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 optimizer_grouped_parameters = [
                     {
                         "params": [
@@ -219,21 +254,21 @@ class LLaVATrainer(Trainer):
                             p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
                         ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": self.args.mm_projector_lr,
+                        "lr":5e-6,
                     },
                     {
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
                         ],
                         "weight_decay": 0.0,
-                        "lr": self.args.mm_projector_lr,
+                        "lr": 5e-6,
                     },
                     {
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n.startswith("atten") and p.requires_grad)
                         ],
                         "weight_decay": 0.0,
-                        "lr": 1e-4,
+                        "lr": 4e-4,
                     }
                 ]
             else:
@@ -276,6 +311,15 @@ class LLaVATrainer(Trainer):
                         logger.debug(f"bitsandbytes: will optimize {module} in fp32")
                 logger.info(f"skipped: {skipped/2**20}M params")
 
+        # print every group in the optimizer
+        for i, group in enumerate(self.optimizer.param_groups):
+            print(f"Optimizer group {i}:")
+            for p in group["params"]:
+                for name, param in opt_model.named_parameters():
+                    if p is param:
+                        print(f"  {name:<60} | shape={tuple(param.shape)} | size={param.numel():,}")
+                        break
+            print(f"  weight_decay={group['weight_decay']}, lr={group['lr']}")
         return self.optimizer
 
     def _save_checkpoint(self, model, trial, metrics=None):

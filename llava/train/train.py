@@ -44,17 +44,7 @@ local_rank = None
 from transformers import TrainerCallback, TrainerState, TrainerControl
 
 class GradientLoggingCallback(TrainerCallback):
-    def on_step_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
-        # 1) Log loss if available
-        if state.log_history:
-            # last logged item
-            last_log = state.log_history[-1]
-            print(f"Step {state.global_step} - last log: {last_log}")
-
-        # 2) Log grad norms
-        # Because HF Trainer does not expose gradients by default, you'd need
-        # a special pass or a custom training loop to access .grad attributes.
-        # Or you can do something like:
+    def on_step_begin(self, args, state: TrainerState, control: TrainerControl, **kwargs):
         model = kwargs.get("model", None)
         if model is not None:
             total_norm = 0.0
@@ -62,13 +52,11 @@ class GradientLoggingCallback(TrainerCallback):
                 if p.grad is not None:
                     param_norm = p.grad.data.norm(2).item()
                     total_norm += param_norm ** 2
-                    # Only log projector or atten
-                    if "mm_projector" in n or "atten" in n:
-                        print(f"  Grad norm for {n}: {param_norm:.4f}")
+                    if "mm_projector" in n or "bridge" in n or "atten" in n:
+                        print(f"[GradNorm] {n}: {param_norm:.5f}")
             total_norm = total_norm ** 0.5
-            print(f"  --> Total grad norm: {total_norm:.4f}")
+            print(f"[GradNorm] Total: {total_norm:.5f}")
 
-        return control
 
 
 
@@ -1000,6 +988,7 @@ def train(attn_implementation=None):
         grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
         if model_args.fga:
+            model.fga = True
             num_of_patches = patches_height * patches_width + 1
             sizes = [None] 
             sizes.extend([576 for _ in range(num_of_patches)])
