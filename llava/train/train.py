@@ -41,23 +41,33 @@ from llava import mm_utils
 
 local_rank = None
 
-from transformers import TrainerCallback, TrainerState, TrainerControl
+from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
+import torch
 
-class GradientLoggingCallback(TrainerCallback):
-    def on_step_begin(self, args, state: TrainerState, control: TrainerControl, **kwargs):
-        model = kwargs.get("model", None)
-        if model is not None:
+class GradNormLogger(TrainerCallback):
+    def __init__(self, every: int = 10):
+        self.every = every
+
+    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        if state.global_step % self.every == 0 and kwargs.get("model") is not None:
+            model = kwargs["model"]
             total_norm = 0.0
-            for n, p in model.named_parameters():
+            for p in model.parameters():
                 if p.grad is not None:
-                    param_norm = p.grad.data.norm(2).item()
-                    total_norm += param_norm ** 2
-                    if "mm_projector" in n or "bridge" in n or "atten" in n:
-                        print(f"[GradNorm] {n}: {param_norm:.5f}")
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
             total_norm = total_norm ** 0.5
-            print(f"[GradNorm] Total: {total_norm:.5f}")
-
-
+            print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
+    
+    def on_optimizer_step(self, args, state, control, **kwargs):
+        model = kwargs["model"]
+        total_norm = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
 
 
 def rank0_print(*args):
@@ -144,6 +154,11 @@ class TrainingArguments(transformers.TrainingArguments):
         default=0.0,
         metadata={"help": "Lambda value for loss balancing"}
     )
+    max_grad_norm: float = field(
+    default=1.0,
+    metadata={"help": "Maximum gradient norm (for gradient clipping)."}
+    )
+
 
 
 def maybe_zero_3(param, ignore_status=False, name=None):
@@ -828,6 +843,7 @@ def train(attn_implementation=None):
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    training_args.max_grad_norm = 1
     local_rank = training_args.local_rank
     compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
 
@@ -1019,11 +1035,15 @@ def train(attn_implementation=None):
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
 
-    trainer = LLaVATrainer(model=model,
-                    tokenizer=tokenizer,
-                    args=training_args,
-                    callbacks=[GradientLoggingCallback],
-                    **data_module)
+
+    trainer = LLaVATrainer(
+        model=model,
+        tokenizer=tokenizer,
+        args=training_args,          # your existing TrainingArguments
+        callbacks=[GradNormLogger(every=1)],   # ← INSTANCE, not class
+        **data_module
+    )
+
 
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
