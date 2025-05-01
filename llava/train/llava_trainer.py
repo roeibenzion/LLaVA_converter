@@ -129,32 +129,7 @@ class LengthGroupedSampler(Sampler):
             indices = get_length_grouped_indices(self.lengths, self.batch_size, self.world_size, generator=self.generator)
         return iter(indices)
 
-import torch, torch.distributed as dist
 class LLaVATrainer(Trainer):
-    def training_step(self, model, inputs):
-        # ^ model is a DeepSpeedEngine when DS is enabled
-        loss = super().training_step(model, inputs)   # forward + backward
-
-        # --- grad-norm logging -------------------------------------------------
-        if self.state.global_step % 1 == 0:          # log every 10 steps
-            local_sq = 0.0
-            for n, p in model.named_parameters():
-                if p.grad is not None: 
-                    print(n, p.grad.norm())               # ignore frozen / unused
-                    local_sq += p.grad.data.pow(2).sum().item()
-
-            # aggregate across ranks (no-op on single-GPU)
-            total_sq = torch.tensor(local_sq,
-                                    device=model.device if hasattr(model, 'device') else self.args.device)
-            if dist.is_initialized():
-                dist.all_reduce(total_sq, op=dist.ReduceOp.SUM)
-
-            print(f"[step {self.state.global_step}] "
-                  f"grad-norm = {total_sq.sqrt().item():.4f}")
-        
-        return loss
-
-
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
