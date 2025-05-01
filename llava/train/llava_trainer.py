@@ -129,8 +129,30 @@ class LengthGroupedSampler(Sampler):
             indices = get_length_grouped_indices(self.lengths, self.batch_size, self.world_size, generator=self.generator)
         return iter(indices)
 
-
+import torch, torch.distributed as dist
 class LLaVATrainer(Trainer):
+    def training_step(self, model, inputs):
+        # ^ model is a DeepSpeedEngine when DS is enabled
+        loss = super().training_step(model, inputs)   # forward + backward
+
+        # --- grad-norm logging -------------------------------------------------
+        if self.state.global_step % 1 == 0:          # log every 10 steps
+            local_sq = 0.0
+            for p in model.parameters():
+                if p.grad is not None:                # ignore frozen / unused
+                    local_sq += p.grad.data.pow(2).sum().item()
+
+            # aggregate across ranks (no-op on single-GPU)
+            total_sq = torch.tensor(local_sq,
+                                    device=model.device if hasattr(model, 'device') else self.args.device)
+            if dist.is_initialized():
+                dist.all_reduce(total_sq, op=dist.ReduceOp.SUM)
+
+            print(f"[step {self.state.global_step}] "
+                  f"grad-norm = {total_sq.sqrt().item():.4f}")
+        
+        return loss
+
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
@@ -209,29 +231,29 @@ class LLaVATrainer(Trainer):
                             p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in atten_parameters and p.requires_grad)
 
                         ],
-                        "weight_decay": 0.0,
-                        "lr": 4e-4,
+                        "weight_decay": self.args.weight_decay,
+                        "lr": 1e-4,
                     },
                     { # atten no weight decay
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in atten_parameters and p.requires_grad)
                             ],
-                        "weight_decay": 0.0,
-                        "lr": 4e-4,
+                        "weight_decay": self.args.weight_decay,
+                        "lr": 1e-4,
                     },
                     { # all projector parameters
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
                         ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 5e-6,
+                        "lr": 1e-4,
                     }, 
                     { # no weight decay projector parameters
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
                         ],
-                        "weight_decay": 0.0,
-                        "lr" : 5e-6,
+                        "weight_decay": self.args.weight_decay,
+                        "lr" : 1e-4,
                     }
                 ]
             elif self.args.mm_projector_lr is not None:
