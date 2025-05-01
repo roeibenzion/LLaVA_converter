@@ -8,27 +8,33 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 class Unary(nn.Module):
-    def __init__(self, embed_size):
+    def __init__(self, embed_size, residual=False):
         """
             Captures local entity information
-        :param embed_size:  the embedding dimension
         """
         super(Unary, self).__init__()
         self.embed = nn.Conv1d(embed_size, embed_size, 1)
         self.feature_reduce = nn.Conv1d(embed_size, 1, 1)
+        self.residual = residual
 
     def forward(self, X):
+        print("YOU INTRODUCED A RESIDUAL")
         X = X.transpose(1, 2)
-
-        X_embed = self.embed(X)
+        if self.residual:
+            X_embed = self.embed(X) + X
+        else:
+            X_embed = self.embed(X)
 
         X_nl_embed = F.dropout(F.relu(X_embed))
-        X_poten = self.feature_reduce(X_nl_embed)
+        if self.residual:
+            X_poten = self.feature_reduce(X_nl_embed) + X
+        else:
+            X_poten = self.feature_reduce(X_nl_embed)
         return X_poten.squeeze(1)
 
 
 class Pairwise(nn.Module):
-    def __init__(self, embed_x_size, x_spatial_dim=None, embed_y_size=None, y_spatial_dim=None):
+    def __init__(self, embed_x_size, x_spatial_dim=None, embed_y_size=None, y_spatial_dim=None, residual=False):
         """
             Captures interaction between utilities or entities of the same utility
         :param embed_x_size: the embedding dimension of the first utility
@@ -51,15 +57,19 @@ class Pairwise(nn.Module):
 
             self.margin_X = nn.Conv1d(self.y_spatial_dim, 1, 1)
             self.margin_Y = nn.Conv1d(self.x_spatial_dim, 1, 1)
+        self.residual = residual
 
     def forward(self, X, Y=None):
 
         X_t = X.transpose(1, 2)
         Y_t = Y.transpose(1, 2) if Y is not None else X_t
 
-
-        X_embed = self.embed_X(X_t)
-        Y_embed = self.embed_Y(Y_t)
+        if self.residual:
+            X_embed = self.embed_X(X_t) + X_t
+            Y_embed = self.embed_Y(Y_t) + Y_t if Y is not None else X_embed
+        else:
+            X_embed = self.embed_X(X_t)
+            Y_embed = self.embed_Y(Y_t)
 
         X_norm = F.normalize(X_embed)
         Y_norm = F.normalize(Y_embed)
@@ -85,7 +95,7 @@ class Pairwise(nn.Module):
 class Atten(nn.Module):
     def __init__(self, util_e, sharing_factor_weights=[], prior_flag=False,
                  sizes=[], size_force=False, pairwise_flag=True,
-                 unary_flag=True, self_flag=True):
+                 unary_flag=True, self_flag=True, unary_residual=False, pairwise_residual=False):
         """
             The class performs an attention on a given list of utilities representation.
         :param util_e: the embedding dimensions

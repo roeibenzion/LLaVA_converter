@@ -44,30 +44,38 @@ local_rank = None
 from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
 import torch
 
-class GradNormLogger(TrainerCallback):
-    def __init__(self, every: int = 10):
-        self.every = every
+from transformers import TrainerCallback, TrainerState, TrainerControl
 
-    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        if state.global_step % self.every == 0 and kwargs.get("model") is not None:
-            model = kwargs["model"]
-            total_norm = 0.0
-            for p in model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5
-            print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
-    
-    def on_optimizer_step(self, args, state, control, **kwargs):
-        model = kwargs["model"]
-        total_norm = 0.0
-        for p in model.parameters():
-            if p.grad is not None:
-                param_norm = p.grad.data.norm(2)
-                total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5
-        print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
+class GradientLoggingCallback(TrainerCallback):
+    """
+    Print ‖g‖₂ for every trainable tensor *before* the optimizer step.
+    Works with DS-ZeRO-2/3 because we gather each shard only long enough
+    to read its gradient.
+    """
+    def on_before_optimizer_step(
+        self, args, state: TrainerState, control: TrainerControl, **kwargs
+    ):
+        engine: deepspeed.DeepSpeedEngine = kwargs["model"]   # this *is* the deepspeed engine
+
+        # ── iterate through all parameters the engine knows about ────────────
+        for name, param in engine.named_parameters():
+            if not param.requires_grad:
+                continue                                    # frozen – skip
+
+            # under ZeRO-2/3 every rank holds only a shard;
+            # GatheredParameters gives us the full tensor for a moment.
+            with deepspeed.zero.GatheredParameters([param], modifier_rank=None):
+                g = param.grad
+                if g is None:
+                    # either the param was unused in the forward pass
+                    # or it was detached; makes debugging easier to see it.
+                    print(f"{name:<60}  no-grad")
+                else:
+                    # l2-norm of the FULL gradient (not just the local shard)
+                    grad_norm = g.data.norm(2).item()
+                    print(f"{name:<60}  {grad_norm:.6f}")
+
+        print("-" * 80)      # visual separator each step
 
 
 def rank0_print(*args):
@@ -1015,7 +1023,8 @@ def train(attn_implementation=None):
             for i in range(1, num_of_patches + 1):
                 # NOTE: only one util for now which is the text
                 sharing_factor[i] = (1, [0])
-            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
+            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, 
+                                       size_force=False,unary_residual=True, pairwise_residual=True).to(dtype=compute_dtype, device=training_args.device)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
 
@@ -1040,7 +1049,7 @@ def train(attn_implementation=None):
         model=model,
         tokenizer=tokenizer,
         args=training_args,          # your existing TrainingArguments
-        callbacks=[GradNormLogger(every=1)],   # ← INSTANCE, not class
+        callbacks=[GradientLoggingCallback], 
         **data_module
     )
 
