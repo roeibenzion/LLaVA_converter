@@ -153,14 +153,15 @@ def build_vision_projector(config, delay_load=False, **kwargs):
         return nn.Linear(config.mm_hidden_size, config.hidden_size)
 
     mlp_gelu_match = re.match(r'^mlp(\d+)x_gelu$', projector_type)
+    dtype = config.dtype
     if mlp_gelu_match:
         mlp_depth = int(mlp_gelu_match.group(1))
         # NOTE: here you chnage the size of the input for the projection. What i did should fix layer 0.
-        modules = [nn.Linear(config.mm_hidden_size, config.hidden_size)]
+        modules = [nn.Linear(config.mm_hidden_size, config.hidden_size).dtype(dtype)]
         #modules = [nn.Linear(1024, 4096)]
         for _ in range(1, mlp_depth):
             modules.append(nn.GELU())
-            modules.append(nn.Linear(config.hidden_size, config.hidden_size))
+            modules.append(nn.Linear(config.hidden_size, config.hidden_size)).dtype(dtype)
             #modules.append(nn.Linear(4096, 4096))
         print("YOURE IN mlp_gelu_match")
         return nn.Sequential(*modules)
