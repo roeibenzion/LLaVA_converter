@@ -138,8 +138,9 @@ class LLaVATrainer(Trainer):
         # --- grad-norm logging -------------------------------------------------
         if self.state.global_step % 1 == 0:          # log every 10 steps
             local_sq = 0.0
-            for p in model.parameters():
-                if p.grad is not None:                # ignore frozen / unused
+            for n, p in model.named_parameters():
+                if p.grad is not None: 
+                    print(n, p.grad.norm())               # ignore frozen / unused
                     local_sq += p.grad.data.pow(2).sum().item()
 
             # aggregate across ranks (no-op on single-GPU)
