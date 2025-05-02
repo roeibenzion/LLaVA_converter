@@ -16,21 +16,31 @@ class Unary(nn.Module):
         self.embed = nn.Conv1d(embed_size, embed_size, 1)
         self.feature_reduce = nn.Conv1d(embed_size, 1, 1)
         self.residual = residual
+        if self.residual:
+            #project from self_embed out dim to feature_reduce out dim
+            self.proj = nn.Conv1d(embed_size, 1, 1)
 
     def forward(self, X):
-        print("YOU INTRODUCED A RESIDUAL")
-        X = X.transpose(1, 2)
+        # Save original for residual
+        X = X.transpose(1, 2) 
+        X_orig = X             # [B, D_in, T]
         if self.residual:
-            X_embed = self.embed(X) + X
+            embed_out = self.embed(X)      # Assumed output: [B, T, D_in]
+            X_embed = embed_out + X_orig   # [B, T, D_in]
         else:
             X_embed = self.embed(X)
 
         X_nl_embed = F.dropout(F.relu(X_embed))
+        X_orig = X_nl_embed
         if self.residual:
-            X_poten = self.feature_reduce(X_nl_embed) + X
+            reduce_out = self.feature_reduce(X_nl_embed)  # Assume [B, D_out, T]
+            X_poten = self.proj(X_nl_embed) + reduce_out
         else:
-            X_poten = self.feature_reduce(X_nl_embed)
-        return X_poten.squeeze(1)
+            reduce_out = self.feature_reduce(X_nl_embed)
+            X_poten = reduce_out
+        X_out = X_poten.squeeze(1)
+
+        return X_out
 
 
 class Pairwise(nn.Module):
@@ -126,6 +136,8 @@ class Atten(nn.Module):
         self.pairwise_flag = pairwise_flag
         self.unary_flag = unary_flag
         self.size_force = size_force
+        self.unary_residual = unary_residual
+        self.pairwise_residual = pairwise_residual
 
         if len(sizes) == 0:
             sizes = [None for _ in util_e]
@@ -134,7 +146,7 @@ class Atten(nn.Module):
 
         #force the provided size
         for idx, e_dim in enumerate(util_e):
-            self.un_models.append(Unary(e_dim))
+            self.un_models.append(Unary(e_dim, self.unary_residual))
             if self.size_force:
                 self.spatial_pool[str(idx)] = nn.AdaptiveAvgPool1d(sizes[idx])
 
@@ -155,7 +167,8 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
-                    self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
+                    self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2], 
+                                                                 residual=pairwise_residual)    
         # Handle reduce potentials (with scalars)
         self.reduce_potentials = nn.ModuleList()
 

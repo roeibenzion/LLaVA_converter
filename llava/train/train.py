@@ -1024,7 +1024,7 @@ def train(attn_implementation=None):
                 # NOTE: only one util for now which is the text
                 sharing_factor[i] = (1, [0])
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, 
-                                       size_force=False,unary_residual=True, pairwise_residual=True).to(dtype=compute_dtype, device=training_args.device)
+                                       size_force=False,unary_residual=True, pairwise_residual=False).to(dtype=compute_dtype, device=training_args.device)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
 
@@ -1048,8 +1048,7 @@ def train(attn_implementation=None):
     trainer = LLaVATrainer(
         model=model,
         tokenizer=tokenizer,
-        args=training_args,          # your existing TrainingArguments
-        callbacks=[GradientLoggingCallback], 
+        args=training_args, 
         **data_module
     )
 
