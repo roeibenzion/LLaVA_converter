@@ -68,28 +68,32 @@ class Pairwise(nn.Module):
             self.margin_X = nn.Conv1d(self.y_spatial_dim, 1, 1)
             self.margin_Y = nn.Conv1d(self.x_spatial_dim, 1, 1)
         self.residual = residual
+        if self.residual:
+            # project from self_embed out dim to feature_reduce out dim
+            self.proj_Y = nn.Conv1d(embed_y_size, self.embed_size, 1)
+
 
     def forward(self, X, Y=None):
-
         X_t = X.transpose(1, 2)
         Y_t = Y.transpose(1, 2) if Y is not None else X_t
 
         if self.residual:
+            project_Y = self.proj_Y(Y_t) if Y is not None else self.proj_Y(X_t)
             X_embed = self.embed_X(X_t) + X_t
-            Y_embed = self.embed_Y(Y_t) + Y_t if Y is not None else X_embed
+            Y_embed = self.embed_Y(Y_t) + project_Y if Y is not None else X_embed + X_t
         else:
             X_embed = self.embed_X(X_t)
             Y_embed = self.embed_Y(Y_t)
 
         X_norm = F.normalize(X_embed)
         Y_norm = F.normalize(Y_embed)
-        S = X_norm.transpose(1, 2).bmm(Y_norm)
-        # NOTE: from some reason x_spatioal dim is not None after one iteration of fga. Now hardcoding it to None
-        self.x_spatial_dim = None
-        if self.x_spatial_dim is not None:
-            S = self.normalize_S(S.view(-1, self.x_spatial_dim * self.y_spatial_dim)) \
-                .view(-1, self.x_spatial_dim, self.y_spatial_dim)
 
+        S = X_norm.transpose(1, 2).bmm(Y_norm)
+
+        self.x_spatial_dim = None  # as per your hardcoded logic
+        if self.x_spatial_dim is not None:
+            flat_S = S.view(-1, self.x_spatial_dim * self.y_spatial_dim)
+            S = self.normalize_S(flat_S).view(-1, self.x_spatial_dim, self.y_spatial_dim)
             X_poten = self.margin_X(S.transpose(1, 2)).transpose(1, 2).squeeze(2)
             Y_poten = self.margin_Y(S).transpose(1, 2).squeeze(2)
         else:
@@ -100,6 +104,7 @@ class Pairwise(nn.Module):
             return X_poten
         else:
             return X_poten, Y_poten
+
 
 
 class Atten(nn.Module):
