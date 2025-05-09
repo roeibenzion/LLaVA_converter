@@ -208,8 +208,13 @@ class LlavaMetaForCausalLM(ABC):
         image_features = self.get_model().get_vision_tower()(images)
         return image_features
 
-    def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes, size_force, unary_residual=False, pairwise_residual=False):
+    def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes, size_force, unary_residual=False, pairwise_residual=False, cross_residual=False):
         self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force, unary_residual=unary_residual, pairwise_residual=pairwise_residual)
+        if cross_residual:
+            # project from (b*(n+1), 1024) to (b*(n+1), 4096)
+            self.residual = nn.Linear(1024, 4096)
+        else:
+            self.residual = None
         return self.atten
     
 
@@ -306,8 +311,12 @@ class LlavaMetaForCausalLM(ABC):
         X_v = torch.stack(patches_atten, dim=1)
         # (b, n+1, 1024)
         concat_X_v = torch.cat([X_v[i] for i in range(X_v.shape[0])], dim=0)
+        residual_X_v = concat_X_v.clone()
         # (b*(n+1), 1024)
         image_features = self.get_model().mm_projector(concat_X_v)
+        if self.residual is not None:
+            # (b*(n+1), 4096)
+            image_features = self.residual(residual_X_v) + image_features
         # (b*(n+1), 4096)
         split_sizes = [image.shape[0] for image in images]
         image_features = torch.split(image_features, split_sizes, dim=0)
