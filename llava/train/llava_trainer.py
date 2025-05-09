@@ -130,6 +130,29 @@ class LengthGroupedSampler(Sampler):
         return iter(indices)
 
 class LLaVATrainer(Trainer):
+    
+    def training_step(self, model, inputs):
+        model.train()
+        inputs = self._prepare_inputs(inputs)
+
+        with self.compute_loss_context_manager():
+            loss = self.compute_loss(model, inputs)
+
+        if self.args.gradient_accumulation_steps > 1:
+            loss = loss / self.args.gradient_accumulation_steps
+
+        self.accelerator.backward(loss)
+
+        # 🔍 Track gradient norms after backward
+        if self.state.global_step % 10 == 0:  # log every 10 steps to reduce noise
+            print(f"\n🔍 Grad Norms at step {self.state.global_step}")
+            for name, param in model.named_parameters():
+                if param.grad is not None:
+                    grad_norm = param.grad.data.norm(2).item()
+                    print(f"{name}: {grad_norm:.6f}")
+
+        return loss.detach()
+
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
