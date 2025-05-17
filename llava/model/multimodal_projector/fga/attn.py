@@ -90,7 +90,6 @@ class Pairwise(nn.Module):
 
         S = X_norm.transpose(1, 2).bmm(Y_norm)
 
-        self.x_spatial_dim = None  # as per your hardcoded logic
         if self.x_spatial_dim is not None:
             flat_S = S.view(-1, self.x_spatial_dim * self.y_spatial_dim)
             S = self.normalize_S(flat_S).view(-1, self.x_spatial_dim, self.y_spatial_dim)
