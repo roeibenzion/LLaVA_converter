@@ -130,7 +130,13 @@ class LengthGroupedSampler(Sampler):
         return iter(indices)
 
 class LLaVATrainer(Trainer):
-
+    def adaptive_clip(srlf, model, max_norm=1.0):
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                grad_norm = param.grad.norm()
+                clip_coef = max_norm / (grad_norm + 1e-6)
+                if clip_coef < 1:
+                    param.grad.mul_(clip_coef)
     def training_step(self, model, inputs):
         model.train()
         inputs = self._prepare_inputs(inputs)
@@ -144,19 +150,22 @@ class LLaVATrainer(Trainer):
         self.accelerator.backward(loss)
 
         # 🔍 Log grad norms every 10 steps
-        if self.state.global_step % 1 == 0:
-            #print(f"\n🔍 Grad Norms at step {self.state.global_step}")
-            for name, param in model.named_parameters():
-                if param.grad is not None:
-                    if 'atten' in name and 'feature_reduce' not in name:
-                      param.grad.mul_(100.0)
-                    elif 'feature_reduce' in name:
-                      param.grad.mul_(10.0)
-                    grad_norm = param.grad.data.norm(2).item()
-                    print(f"{name}: {grad_norm:.6f}")
+        # if self.state.global_step % 1 == 0:
+        #     #print(f"\n🔍 Grad Norms at step {self.state.global_step}")
+        #     for name, param in model.named_parameters():
+        #         if param.grad is not None:
+        #             if 'atten' in name and ('feature_reduce' not in name and 'un_models.1.embed' not in name):
+        #               param.grad.mul_(100.0)
+        #             elif 'feature_reduce' in name or 'un_models.1.embed' in name:
+        #               param.grad.mul_(10.0)
         # ✅ Clip gradients manually
-        if self.args.max_grad_norm is not None and self.args.max_grad_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
+        # if self.args.max_grad_norm is not None and self.args.max_grad_norm > 0:
+        #     torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
+        self.adaptive_clip(model, max_norm=self.args.max_grad_norm)
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                grad_norm = param.grad.data.norm(2).item()
+                print(f"{name}: {grad_norm:.6f}")
 
         return loss.detach()
 
