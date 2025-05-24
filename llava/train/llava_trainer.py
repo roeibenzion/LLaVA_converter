@@ -137,6 +137,30 @@ class LLaVATrainer(Trainer):
                 clip_coef = max_norm / (grad_norm + 1e-6)
                 if clip_coef < 1:
                     param.grad.mul_(clip_coef)
+    
+    def show_predictions_against_ground_truth(self, model, inputs, max_examples=5):
+        """
+        Show predictions vs. ground truth for up to `max_examples` items.
+        """
+        model_was_training = model.training
+        model.eval()
+
+        inputs = self._prepare_inputs(inputs)
+        with torch.no_grad():
+            outputs = model(**inputs)
+            logits = outputs.logits
+            predictions = torch.argmax(logits, dim=-1)
+
+        labels = inputs.get("labels", None)
+        for i in range(min(max_examples, predictions.size(0))):
+            pred = predictions[i].item()
+            label = labels[i].item() if labels is not None else "N/A"
+            print(f"Sample {i}: Prediction = {pred} | Ground Truth = {label}")
+
+        if model_was_training:
+            model.train()
+
+
     def training_step(self, model, inputs):
         model.train()
         inputs = self._prepare_inputs(inputs)
@@ -149,27 +173,25 @@ class LLaVATrainer(Trainer):
 
         self.accelerator.backward(loss)
 
-        # 🔍 Log grad norms every 10 steps
-        # if self.state.global_step % 1 == 0:
-        #     #print(f"\n🔍 Grad Norms at step {self.state.global_step}")
-        #     for name, param in model.named_parameters():
-        #         if param.grad is not None:
-        #             if 'atten' in name and ('feature_reduce' not in name and 'un_models.1.embed' not in name):
-        #               param.grad.mul_(100.0)
-        #             elif 'feature_reduce' in name or 'un_models.1.embed' in name:
-        #               param.grad.mul_(10.0)
-        # ✅ Clip gradients manually
-        # if self.args.max_grad_norm is not None and self.args.max_grad_norm > 0:
-        #     torch.nn.utils.clip_grad_norm_(model.parameters(), self.args.max_grad_norm)
+        # ✅ Apply adaptive gradient clipping
         self.adaptive_clip(model, max_norm=self.args.max_grad_norm)
+
+        # 🔍 Log gradient norms
         for name, param in model.named_parameters():
             if param.grad is not None:
                 grad_norm = param.grad.data.norm(2).item()
                 print(f"{name}: {grad_norm:.6f}")
 
+        # 🔁 Every 100 steps: show predictions vs ground truth
+        if self.state.global_step % 100 == 0:
+            print(f"\n📊 Step {self.state.global_step} - Predictions vs Ground Truth:")
+            self.show_predictions_against_ground_truth(model, inputs)
+
         return loss.detach()
 
 
+
+    
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
