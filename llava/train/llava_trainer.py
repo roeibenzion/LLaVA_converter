@@ -138,9 +138,10 @@ class LLaVATrainer(Trainer):
                 if clip_coef < 1:
                     param.grad.mul_(clip_coef)
     
-    def show_predictions_against_ground_truth(self, model, inputs, max_examples=5):
+    def show_predictions_against_ground_truth(self, model, inputs, max_examples=3):
         """
-        Show predictions vs. ground truth for up to `max_examples` items.
+        Show decoded predictions vs. ground truth using the tokenizer.
+        Handles sequence outputs.
         """
         model_was_training = model.training
         model.eval()
@@ -149,13 +150,26 @@ class LLaVATrainer(Trainer):
         with torch.no_grad():
             outputs = model(**inputs)
             logits = outputs.logits
+
+            # Get predicted token IDs
             predictions = torch.argmax(logits, dim=-1)
 
         labels = inputs.get("labels", None)
+
         for i in range(min(max_examples, predictions.size(0))):
-            pred = predictions[i].item()
-            label = labels[i].item() if labels is not None else "N/A"
-            print(f"Sample {i}: Prediction = {pred} | Ground Truth = {label}")
+            pred_ids = predictions[i]
+            pred_text = self.tokenizer.decode(pred_ids, skip_special_tokens=True)
+
+            label_text = None
+            if labels is not None:
+                label_ids = labels[i]
+                label_ids = label_ids[label_ids != -100]
+                label_text = self.tokenizer.decode(label_ids, skip_special_tokens=True)
+
+            print(f"\n🔹 Sample {i}")
+            print(f"🧠 Prediction: {pred_text}")
+            if label_text is not None:
+                print(f"✅ Ground Truth: {label_text}")
 
         if model_was_training:
             model.train()
