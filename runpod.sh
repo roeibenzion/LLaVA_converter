@@ -1,10 +1,5 @@
 #!/bin/bash
 # This script sets up the environment for running LLaVA converter on RunPod.
-
-mkdir content
-cd ./content
-git clone https://github.com/roeibenzion/LLaVA_converter.git
-cd ./LLaVA_converter
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
 source ~/miniconda3/bin/activate
