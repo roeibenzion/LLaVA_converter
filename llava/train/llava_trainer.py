@@ -188,7 +188,7 @@ class LLaVATrainer(Trainer):
         self.accelerator.backward(loss)
 
         # ✅ Apply adaptive gradient clipping
-        self.adaptive_clip(model, max_norm=self.args.max_grad_norm)
+        # self.adaptive_clip(model, max_norm=self.args.max_grad_norm)
 
         # 🔍 Log gradient norms
         for name, param in model.named_parameters():
@@ -284,14 +284,14 @@ class LLaVATrainer(Trainer):
 
                         ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 1e-4,
+                        "lr": 1e-3,
                     },
                     { # atten no weight decay
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in atten_parameters and p.requires_grad)
                             ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 1e-4,
+                        "lr": 1e-3,
                     },
                     { # all projector parameters
                         "params": [
@@ -369,7 +369,6 @@ class LLaVATrainer(Trainer):
                 # if it requires grad, it should be in the optimizer
                 if hasattr(module, "weight") and module.weight.requires_grad:
                     print(module)
-        
             if optimizer_cls.__name__ == "Adam8bit":
                 import bitsandbytes
 
