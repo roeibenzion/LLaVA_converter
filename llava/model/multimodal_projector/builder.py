@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import re
 from .fga import fga
+import math
 
 class fgabuilder:
     '''
@@ -151,19 +152,24 @@ def build_vision_projector(config, delay_load=False, **kwargs):
         
     if projector_type == 'linear':
         return nn.Linear(config.mm_hidden_size, config.hidden_size)
+    
 
     mlp_gelu_match = re.match(r'^mlp(\d+)x_gelu$', projector_type)
     dtype = config.dtype
     if mlp_gelu_match:
         mlp_depth = int(mlp_gelu_match.group(1))
-        # NOTE: here you chnage the size of the input for the projection. What i did should fix layer 0.
-        modules = [nn.Linear(config.mm_hidden_size, config.hidden_size, dtype=dtype)]
-        #modules = [nn.Linear(1024, 4096)]
+        layer = nn.Linear(config.mm_hidden_size, config.hidden_size, dtype=dtype)
+        nn.init.xavier_uniform_(layer.weight, gain=1.0)
+        nn.init.zeros_(layer.bias)
+        modules = [layer]
         for _ in range(1, mlp_depth):
             modules.append(nn.GELU())
-            modules.append(nn.Linear(config.hidden_size, config.hidden_size, dtype=dtype))
-            #modules.append(nn.Linear(4096, 4096))
-        print("YOURE IN mlp_gelu_match")
+            layer = nn.Linear(config.hidden_size, config.hidden_size, dtype=dtype)
+            nn.init.xavier_uniform_(layer.weight, gain=1.0)
+            nn.init.zeros_(layer.bias)
+            # nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
+            # layer.weight.data.mul_(4.0)     
+            modules.append(layer)
         return nn.Sequential(*modules)
 
     if projector_type == 'identity':
