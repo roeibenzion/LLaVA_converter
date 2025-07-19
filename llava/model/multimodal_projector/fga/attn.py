@@ -120,8 +120,8 @@ class Atten(nn.Module):
         self.similar_modalities_reps = {rep[0]:[] for rep in self.similar_modalities}
         for i, rep in enumerate(self.similar_modalities_reps.keys()):
             self.similar_modalities_reps[rep] = [idx for idx in self.similar_modalities[i] if idx != rep]
-        for rep in self.similar_modalities_reps.keys():
-            for idx in self.similar_modalities[rep]:
+        for i, rep in enumerate(self.similar_modalities_reps.keys()):
+            for idx in self.similar_modalities[i]:
                 self.similar_modalities_reps[rep].append(idx)
 
         if len(sizes) == 0:
