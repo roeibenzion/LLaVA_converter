@@ -115,8 +115,6 @@ class Atten(nn.Module):
         self.pairwise_flag = pairwise_flag
         self.unary_flag = unary_flag
         self.size_force = size_force
-        self.unary_residual = unary_residual
-        self.pairwise_residual = pairwise_residual
 
         if len(sizes) == 0:
             sizes = [None for _ in util_e]
@@ -125,7 +123,7 @@ class Atten(nn.Module):
 
         #force the provided size
         for idx, e_dim in enumerate(util_e):
-            self.un_models.append(Unary(e_dim, self.unary_residual))
+            self.un_models.append(Unary(e_dim))
             if self.size_force:
                 self.spatial_pool[str(idx)] = nn.AdaptiveAvgPool1d(sizes[idx])
 
@@ -146,8 +144,7 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
-                    self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2], 
-                                                                 residual=pairwise_residual)    
+                    self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
         # Handle reduce potentials (with scalars)
         self.reduce_potentials = nn.ModuleList()
 

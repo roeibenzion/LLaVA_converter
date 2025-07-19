@@ -40,8 +40,6 @@ from llava import mm_utils
 
 
 local_rank = None
-<<<<<<< HEAD
-=======
 
 from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
 import torch
@@ -72,7 +70,6 @@ class GradNormLogger(TrainerCallback):
         print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
 
 
->>>>>>> parent of a1aa905 (Introduce FGA residual)
 def rank0_print(*args):
     if local_rank == 0:
         print(*args)
@@ -846,6 +843,7 @@ def train(attn_implementation=None):
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    training_args.max_grad_norm = 1
     local_rank = training_args.local_rank
     compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
 
@@ -1017,12 +1015,7 @@ def train(attn_implementation=None):
             for i in range(1, num_of_patches + 1):
                 # NOTE: only one util for now which is the text
                 sharing_factor[i] = (1, [0])
-<<<<<<< HEAD
-            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, 
-                                       size_force=False,unary_residual=False, pairwise_residual=False, cross_residual=False).to(dtype=compute_dtype, device=training_args.device)
-=======
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
->>>>>>> parent of a1aa905 (Introduce FGA residual)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
 
@@ -1042,16 +1035,13 @@ def train(attn_implementation=None):
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
 
-    training_args.max_grad_norm = 1.0
+
     trainer = LLaVATrainer(
         model=model,
         tokenizer=tokenizer,
-<<<<<<< HEAD
         args=training_args,
-=======
         args=training_args,          # your existing TrainingArguments
         callbacks=[GradNormLogger(every=1)],   # ← INSTANCE, not class
->>>>>>> parent of a1aa905 (Introduce FGA residual)
         **data_module
     )
 
@@ -1078,20 +1068,6 @@ def train(attn_implementation=None):
     else:
         safe_save_model_for_hf_trainer(trainer=trainer,
                                        output_dir=training_args.output_dir)
-
-from transformers import TrainerCallback, TrainerState, TrainerControl
-import torch.nn as nn
-
-class GradNormTrackerCallback(transformers.TrainerCallback):
-    def on_backward_end(self, args, state, control, model=None, **kwargs):
-        grad_norms = {}
-        for name, param in model.named_parameters():
-            if param.grad is not None:
-                grad_norms[name] = param.grad.data.norm(2).item()
-
-        print(f"\nStep {state.global_step} - Gradient Norms:")
-        for name, norm in grad_norms.items():
-            print(f"{name}: {norm:.6f}")
 
 
 if __name__ == "__main__":
