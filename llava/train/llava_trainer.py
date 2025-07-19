@@ -188,7 +188,7 @@ class LLaVATrainer(Trainer):
         self.accelerator.backward(loss)
 
         # ✅ Apply adaptive gradient clipping
-        # self.adaptive_clip(model, max_norm=self.args.max_grad_norm)
+        self.adaptive_clip(model, max_norm=self.args.max_grad_norm)
 
         # 🔍 Log gradient norms
         for name, param in model.named_parameters():
