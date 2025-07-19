@@ -1016,7 +1016,7 @@ def train(attn_implementation=None):
             # First image patch - full images.
             sharing_factor[1] = (1, [0])
             # Following patches - image patches. Similar modalities. 
-            similar_modalities = [i for i in range(2, num_of_patches + 1)]
+            similar_modalities = [[i for i in range(2, num_of_patches + 1)]]
             sharing_factor[2] = (1, [0])
 
             # for i in range(1, num_of_patches + 1):

@@ -79,13 +79,6 @@ class Pairwise(nn.Module):
         else:
             return X_poten, Y_poten
 
-
-def find_similar_modalities(modality, similar_modalities):
-    for s in similar_modalities:
-        if modality in s:
-            return s
-    return None
-
 class Atten(nn.Module):
     def __init__(self, util_e, sharing_factor_weights=[], prior_flag=False,
                  sizes=[], size_force=False, pairwise_flag=True,
@@ -104,8 +97,8 @@ class Atten(nn.Module):
         :param pairwise_flag: use pairwise interaction between utilities
         :param unary_flag: use local information
         :param self_flag: use self interactions between utilitie's entities
-        :param similar_modalities: list of similar modalities for cross-attention, in the form of idx. Example: [1,2,6,8] -> modalities 1, 2, 6, and 8 are similar.
-        The purpose is to allow complete weight sharing between these modalities.
+        :param similar_modalities: list of lists of similar modalities for cross-attention, in the form of idx. Example: [[1,2,6,8], [0, 9]] -> modalities 1, 2, 6, and 8 are similar, 0, 9 are similar. 
+        The purpose is to allow complete weight sharing between these modalities. 
         """
         super(Atten, self).__init__()
         self.util_e = util_e
@@ -123,16 +116,21 @@ class Atten(nn.Module):
         self.unary_flag = unary_flag
         self.size_force = size_force
         self.similar_modalities = similar_modalities
+        # One representative for each group of similar modalities, the value is the modalities connected to it.
+        self.similar_modalities_reps = {rep[0]:[] for rep in self.similar_modalities}
+        for rep in self.similar_modalities_reps.keys():
+            for idx in self.similar_modalities[rep]:
+                self.similar_modalities_reps[rep].append(idx)
 
         if len(sizes) == 0:
             sizes = [None for _ in util_e]
 
         self.sharing_factor_weights = sharing_factor_weights
 
-        #force the provided size
         for idx, e_dim in enumerate(util_e):
             self.un_models.append(Unary(e_dim))
             if self.size_force:
+                #force the provided size
                 self.spatial_pool[str(idx)] = nn.AdaptiveAvgPool1d(sizes[idx])
 
         #Pairwise
@@ -144,6 +142,12 @@ class Atten(nn.Module):
                 self.pp_models[str(idx1)] = Pairwise(e_dim_1, sizes[idx1])
             else:
                 if pairwise_flag:
+                    if any(idx1 in group for group in self.similar_modalities) and idx1 not in self.similar_modalities_reps.keys():
+                        # idx1 is similar to some modality, but not a representative
+                        continue
+                    if any(idx2 in group for group in self.similar_modalities) and idx2 not in self.similar_modalities_reps.keys():
+                        # idx2 is similar to some modality, but not a representative
+                        continue
                     if idx1 in self.sharing_factor_weights:
                         # not connected
                         if idx2 not in self.sharing_factor_weights[idx1][1]:
@@ -152,10 +156,7 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
-                    if find_similar_modalities(idx1, self.pp_models.keys()) is not None \
-                            or find_similar_modalities(idx2, self.pp_models.keys()) is not None:
-                        self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
-                        
+                    self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
         # Handle reduce potentials (with scalars)
         self.reduce_potentials = nn.ModuleList()
 
@@ -227,7 +228,7 @@ class Atten(nn.Module):
 
             if self.self_flag:
                 util_factors.setdefault(i, []).append(self.pp_models[str(i)](utils[i]))
-
+            
             if self.pairwise_flag:
                 for j in connected_list:
                     other_util = utils[j]
@@ -254,7 +255,6 @@ class Atten(nn.Module):
                 util_factors.setdefault(i, []).append(self.un_models[i](utils[i]))
             if self.self_flag:
                 util_factors.setdefault(i, []).append(self.pp_models[str(i)](utils[i]))
-
         # joint
         if self.pairwise_flag:
             for (i, j) in combinations_with_replacement(range(self.n_utils), 2):
@@ -263,11 +263,27 @@ class Atten(nn.Module):
                     continue
                 if i == j:
                     continue
+                if any(i in group for group in self.similar_modalities) and i not in self.similar_modalities_reps:
+                    # i is similar to some modality, but not a representative
+                    continue
+                if any(j in group for group in self.similar_modalities) and j not in self.similar_modalities_reps:
+                    # j is similar to some modality, but not a representative
+                    continue
                 else:
                     factor_ij, factor_ji = self.pp_models[str((i, j))](utils[i], utils[j])
                     util_factors.setdefault(i, []).append(factor_ij)
                     util_factors.setdefault(j, []).append(factor_ji)
+                    if i in self.similar_modalities_reps:
+                        for util_sim in self.similar_modalities_reps[i]:
+                            util_factors.setdefault(util_sim, []).append(factor_ij)
+                            util_factors.setdefault(j, []).append(factor_ji)
 
+        # Show the util factors
+        for i in range(self.n_utils):
+            if i not in util_factors:
+                util_factors[i] = []
+            print(f"Util {i} factors shape: {[p.shape for p in util_factors[i]]}")
+            print(f'Util {i} num of factors: {len(util_factors[i])}')
         # perform attention
         for i in range(self.n_utils):
             if self.prior_flag:
@@ -279,6 +295,8 @@ class Atten(nn.Module):
 
             util_factors[i] = torch.cat([p if len(p.size()) == 3 else p.unsqueeze(1)
                                        for p in util_factors[i]], dim=1)
+            print(f"Util {i} factors shape: {util_factors[i].shape}")
+            print(f'Util {i} num of factors: {util_factors[i].size(1)}')
             util_factors[i] = self.reduce_potentials[i](util_factors[i]).squeeze(1)
             util_factors[i] = F.softmax(util_factors[i], dim=1).unsqueeze(2)
             attention.append(torch.bmm(utils[i].transpose(1, 2), util_factors[i]).squeeze(2))
@@ -336,11 +354,7 @@ class Atten(nn.Module):
         )
 
         plt.savefig("attention_graph.png")
-        plt.close()
-        
-
-
-
+        plt.close()    
 class NaiveAttention(nn.Module):
     def __init__(self):
         """
