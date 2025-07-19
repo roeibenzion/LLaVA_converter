@@ -83,7 +83,7 @@ class Pairwise(nn.Module):
 class Atten(nn.Module):
     def __init__(self, util_e, sharing_factor_weights=[], prior_flag=False,
                  sizes=[], size_force=False, pairwise_flag=True,
-                 unary_flag=True, self_flag=True, similar_modalities=[]):
+                 unary_flag=True, self_flag=True, similar_modalities=[], skip_modalities = []):
         """
             The class performs an attention on a given list of utilities representation.
         :param util_e: the embedding dimensions
@@ -100,6 +100,7 @@ class Atten(nn.Module):
         :param self_flag: use self interactions between utilitie's entities
         :param similar_modalities: list of lists of similar modalities for cross-attention, in the form of idx. Example: [[1,2,6,8], [0, 9]] -> modalities 1, 2, 6, and 8 are similar, 0, 9 are similar. 
         The purpose is to allow complete weight sharing between these modalities. 
+        : param skip_modalities: list of modalities to skip in the attention computation within themselves (use case: modalities we do not use in the output).
         """
         super(Atten, self).__init__()
         self.util_e = util_e
@@ -116,6 +117,7 @@ class Atten(nn.Module):
         self.pairwise_flag = pairwise_flag
         self.unary_flag = unary_flag
         self.size_force = size_force
+        self.skip_modalities = skip_modalities
         self.similar_modalities = similar_modalities
         # One representative for each group of similar modalities, the value is the modalities connected to it.
         self.similar_modalities_reps = {rep[0]:[] for rep in self.similar_modalities}
@@ -129,6 +131,8 @@ class Atten(nn.Module):
         self.sharing_factor_weights = sharing_factor_weights
 
         for idx, e_dim in enumerate(util_e):
+            if idx in self.skip_modalities:
+                continue
             self.un_models.append(Unary(e_dim))
             if self.size_force:
                 #force the provided size
@@ -139,7 +143,7 @@ class Atten(nn.Module):
         for ((idx1, e_dim_1), (idx2, e_dim_2)) \
                 in combinations_with_replacement(enumerate(util_e), 2):
             # self
-            if self.self_flag and idx1 == idx2:
+            if self.self_flag and idx1 == idx2 and idx1 not in self.skip_modalities:
                 self.pp_models[str(idx1)] = Pairwise(e_dim_1, sizes[idx1])
             else:
                 if pairwise_flag:
