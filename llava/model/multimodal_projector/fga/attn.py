@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from sympy import group
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -118,11 +119,9 @@ class Atten(nn.Module):
         self.similar_modalities = similar_modalities
         # One representative for each group of similar modalities, the value is the modalities connected to it.
         self.similar_modalities_reps = {rep[0]:[] for rep in self.similar_modalities}
-        for i, rep in enumerate(self.similar_modalities_reps.keys()):
-            self.similar_modalities_reps[rep] = [idx for idx in self.similar_modalities[i] if idx != rep]
-        for i, rep in enumerate(self.similar_modalities_reps.keys()):
-            for idx in self.similar_modalities[i]:
-                self.similar_modalities_reps[rep].append(idx)
+        for group in self.similar_modalities:
+            rep = group[0]
+            self.similar_modalities_reps[rep] = [idx for idx in group if idx != rep]
 
         if len(sizes) == 0:
             sizes = [None for _ in util_e]
@@ -181,10 +180,23 @@ class Atten(nn.Module):
         if pairwise_flag:
             for idx, (num_utils, connected_utils) in sharing_factor_weights.items():
                 for c_u in connected_utils:
+                    if idx in self.similar_modalities_reps:
+                        # idx is a representative, so it gets the number of potentials from the similar modalities
+                        num_utils += len(self.similar_modalities_reps[idx])
                     self.num_of_potentials[c_u] += num_utils
                     self.num_of_potentials[idx] += 1
+            for rep in self.similar_modalities_reps.keys():
+                if rep in sharing_factor_weights:
+                    continue
+                self.num_of_potentials[rep] += (self.n_utils - 1) \
+                                                 - len(sharing_factor_weights)
             for k in self.num_of_potentials:
-                if k not in self.sharing_factor_weights:
+                if k not in self.similar_modalities_reps:
+                    for i in self.similar_modalities_reps:
+                        if k in self.similar_modalities_reps[i]:
+                            self.num_of_potentials[k] = self.num_of_potentials[i]
+                            break
+                elif k not in self.sharing_factor_weights:
                     self.num_of_potentials[k] += (self.n_utils - 1) \
                                                  - len(sharing_factor_weights)
 
@@ -248,6 +260,10 @@ class Atten(nn.Module):
                         factor_ji, factor_ij = self.pp_models[str((j, i))](expanded_util, utils[i])
                     util_factors[i].append(factor_ij)
                     util_factors.setdefault(j, []).append(factor_ji.view(b_size, num_utils, factor_ji.size(1)))
+                    if i in self.similar_modalities_reps:
+                        for util_sim in self.similar_modalities_reps[i]:
+                            util_factors.setdefault(util_sim, []).append(factor_ij)
+                            util_factors.setdefault(j, []).append(factor_ji.view(b_size, num_utils, factor_ji.size(1)))
 
         # handle local factors
         for i in range(self.n_utils):
@@ -280,12 +296,6 @@ class Atten(nn.Module):
                             util_factors.setdefault(util_sim, []).append(factor_ij)
                             util_factors.setdefault(j, []).append(factor_ji)
 
-        # Show the util factors
-        for i in range(self.n_utils):
-            if i not in util_factors:
-                util_factors[i] = []
-            print(f"Util {i} factors shape: {[p.shape for p in util_factors[i]]}")
-            print(f'Util {i} num of factors: {len(util_factors[i])}')
         # perform attention
         for i in range(self.n_utils):
             if self.prior_flag:
@@ -297,8 +307,6 @@ class Atten(nn.Module):
 
             util_factors[i] = torch.cat([p if len(p.size()) == 3 else p.unsqueeze(1)
                                        for p in util_factors[i]], dim=1)
-            print(f"Util {i} factors shape: {util_factors[i].shape}")
-            print(f'Util {i} num of factors: {util_factors[i].size(1)}')
             util_factors[i] = self.reduce_potentials[i](util_factors[i]).squeeze(1)
             util_factors[i] = F.softmax(util_factors[i], dim=1).unsqueeze(2)
             attention.append(torch.bmm(utils[i].transpose(1, 2), util_factors[i]).squeeze(2))
