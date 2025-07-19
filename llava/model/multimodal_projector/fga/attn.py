@@ -80,11 +80,16 @@ class Pairwise(nn.Module):
             return X_poten, Y_poten
 
 
+def find_similar_modalities(modality, similar_modalities):
+    for s in similar_modalities:
+        if modality in s:
+            return s
+    return None
 
 class Atten(nn.Module):
     def __init__(self, util_e, sharing_factor_weights=[], prior_flag=False,
                  sizes=[], size_force=False, pairwise_flag=True,
-                 unary_flag=True, self_flag=True):
+                 unary_flag=True, self_flag=True, similar_modalities=[]):
         """
             The class performs an attention on a given list of utilities representation.
         :param util_e: the embedding dimensions
@@ -99,6 +104,8 @@ class Atten(nn.Module):
         :param pairwise_flag: use pairwise interaction between utilities
         :param unary_flag: use local information
         :param self_flag: use self interactions between utilitie's entities
+        :param similar_modalities: list of similar modalities for cross-attention, in the form of idx. Example: [1,2,6,8] -> modalities 1, 2, 6, and 8 are similar.
+        The purpose is to allow complete weight sharing between these modalities.
         """
         super(Atten, self).__init__()
         self.util_e = util_e
@@ -115,6 +122,7 @@ class Atten(nn.Module):
         self.pairwise_flag = pairwise_flag
         self.unary_flag = unary_flag
         self.size_force = size_force
+        self.similar_modalities = similar_modalities
 
         if len(sizes) == 0:
             sizes = [None for _ in util_e]
@@ -144,7 +152,10 @@ class Atten(nn.Module):
                         # not connected
                         if idx1 not in self.sharing_factor_weights[idx2][1]:
                             continue
-                    self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
+                    if find_similar_modalities(idx1, self.pp_models.keys()) is not None \
+                            or find_similar_modalities(idx2, self.pp_models.keys()) is not None:
+                        self.pp_models[str((idx1, idx2))] = Pairwise(e_dim_1, sizes[idx1], e_dim_2, sizes[idx2])
+                        
         # Handle reduce potentials (with scalars)
         self.reduce_potentials = nn.ModuleList()
 

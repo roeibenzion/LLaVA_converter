@@ -1012,10 +1012,18 @@ def train(attn_implementation=None):
             vision_dimension = vision_tower.config.hidden_size
             util_e = [text_dimension] + [vision_dimension for _ in range(num_of_patches)]
             sharing_factor = {}
-            for i in range(1, num_of_patches + 1):
-                # NOTE: only one util for now which is the text
-                sharing_factor[i] = (1, [0])
-            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
+
+            # First image patch - full images.
+            sharing_factor[1] = (1, [0])
+            # Following patches - image patches. Similar modalities. 
+            similar_modalities = [i for i in range(2, num_of_patches + 1)]
+            sharing_factor[2] = (1, [0])
+
+            # for i in range(1, num_of_patches + 1):
+            #     # NOTE: only one util for now which is the text
+            #     sharing_factor[i] = (1, [0])
+
+            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
 
