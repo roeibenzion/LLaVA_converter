@@ -40,6 +40,39 @@ from llava import mm_utils
 
 
 local_rank = None
+<<<<<<< HEAD
+=======
+
+from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
+import torch
+
+class GradNormLogger(TrainerCallback):
+    def __init__(self, every: int = 10):
+        self.every = every
+
+    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        if state.global_step % self.every == 0 and kwargs.get("model") is not None:
+            model = kwargs["model"]
+            total_norm = 0.0
+            for p in model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** 0.5
+            print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
+    
+    def on_optimizer_step(self, args, state, control, **kwargs):
+        model = kwargs["model"]
+        total_norm = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
+
+
+>>>>>>> parent of a1aa905 (Introduce FGA residual)
 def rank0_print(*args):
     if local_rank == 0:
         print(*args)
@@ -984,8 +1017,12 @@ def train(attn_implementation=None):
             for i in range(1, num_of_patches + 1):
                 # NOTE: only one util for now which is the text
                 sharing_factor[i] = (1, [0])
+<<<<<<< HEAD
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, 
                                        size_force=False,unary_residual=False, pairwise_residual=False, cross_residual=False).to(dtype=compute_dtype, device=training_args.device)
+=======
+            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False).to(dtype=compute_dtype, device=training_args.device)
+>>>>>>> parent of a1aa905 (Introduce FGA residual)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
 
@@ -1009,7 +1046,12 @@ def train(attn_implementation=None):
     trainer = LLaVATrainer(
         model=model,
         tokenizer=tokenizer,
+<<<<<<< HEAD
         args=training_args,
+=======
+        args=training_args,          # your existing TrainingArguments
+        callbacks=[GradNormLogger(every=1)],   # ← INSTANCE, not class
+>>>>>>> parent of a1aa905 (Introduce FGA residual)
         **data_module
     )
 

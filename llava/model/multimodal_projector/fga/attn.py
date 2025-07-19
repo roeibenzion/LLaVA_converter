@@ -8,43 +8,27 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 class Unary(nn.Module):
-    def __init__(self, embed_size, residual=False):
+    def __init__(self, embed_size):
         """
             Captures local entity information
+        :param embed_size:  the embedding dimension
         """
         super(Unary, self).__init__()
         self.embed = nn.Conv1d(embed_size, embed_size, 1)
         self.feature_reduce = nn.Conv1d(embed_size, 1, 1)
-        self.residual = residual
-        if self.residual:
-            #project from self_embed out dim to feature_reduce out dim
-            self.proj = nn.Conv1d(embed_size, 1, 1)
 
     def forward(self, X):
-        # Save original for residual
-        X = X.transpose(1, 2) 
-        X_orig = X             # [B, D_in, T]
-        if self.residual:
-            embed_out = self.embed(X)      # Assumed output: [B, T, D_in]
-            X_embed = embed_out + X_orig   # [B, T, D_in]
-        else:
-            X_embed = self.embed(X)
+        X = X.transpose(1, 2)
+
+        X_embed = self.embed(X)
 
         X_nl_embed = F.dropout(F.relu(X_embed))
-        X_orig = X_nl_embed
-        if self.residual:
-            reduce_out = self.feature_reduce(X_nl_embed)  # Assume [B, D_out, T]
-            X_poten = self.proj(X_nl_embed) + reduce_out
-        else:
-            reduce_out = self.feature_reduce(X_nl_embed)
-            X_poten = reduce_out
-        X_out = X_poten.squeeze(1)
-
-        return X_out
+        X_poten = self.feature_reduce(X_nl_embed)
+        return X_poten.squeeze(1)
 
 
 class Pairwise(nn.Module):
-    def __init__(self, embed_x_size, x_spatial_dim=None, embed_y_size=None, y_spatial_dim=None, residual=False):
+    def __init__(self, embed_x_size, x_spatial_dim=None, embed_y_size=None, y_spatial_dim=None):
         """
             Captures interaction between utilities or entities of the same utility
         :param embed_x_size: the embedding dimension of the first utility
@@ -67,23 +51,14 @@ class Pairwise(nn.Module):
 
             self.margin_X = nn.Conv1d(self.y_spatial_dim, 1, 1)
             self.margin_Y = nn.Conv1d(self.x_spatial_dim, 1, 1)
-        self.residual = residual
-        if self.residual:
-            # project from self_embed out dim to feature_reduce out dim
-            self.proj_Y = nn.Conv1d(embed_y_size, self.embed_size, 1)
-
 
     def forward(self, X, Y=None):
         X_t = X.transpose(1, 2)
         Y_t = Y.transpose(1, 2) if Y is not None else X_t
 
-        if self.residual:
-            project_Y = self.proj_Y(Y_t) if Y is not None else self.proj_Y(X_t)
-            X_embed = self.embed_X(X_t) + X_t
-            Y_embed = self.embed_Y(Y_t) + project_Y if Y is not None else X_embed + X_t
-        else:
-            X_embed = self.embed_X(X_t)
-            Y_embed = self.embed_Y(Y_t)
+
+        X_embed = self.embed_X(X_t)
+        Y_embed = self.embed_Y(Y_t)
 
         X_norm = F.normalize(X_embed)
         Y_norm = F.normalize(Y_embed)
@@ -109,7 +84,7 @@ class Pairwise(nn.Module):
 class Atten(nn.Module):
     def __init__(self, util_e, sharing_factor_weights=[], prior_flag=False,
                  sizes=[], size_force=False, pairwise_flag=True,
-                 unary_flag=True, self_flag=True, unary_residual=False, pairwise_residual=False):
+                 unary_flag=True, self_flag=True):
         """
             The class performs an attention on a given list of utilities representation.
         :param util_e: the embedding dimensions

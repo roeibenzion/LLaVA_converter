@@ -208,13 +208,8 @@ class LlavaMetaForCausalLM(ABC):
         image_features = self.get_model().get_vision_tower()(images)
         return image_features
 
-    def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes, size_force, unary_residual=False, pairwise_residual=False, cross_residual=False):
-        self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force, unary_residual=unary_residual, pairwise_residual=pairwise_residual)
-        if cross_residual:
-            # project from (b*(n+1), 1024) to (b*(n+1), 4096)
-            self.residual = nn.Linear(1024, 4096)
-        else:
-            self.residual = None
+    def initialize_fga(self, util_e, sharing_factor,prior_flag, sizes, size_force):
+        self.atten = Atten(util_e, sharing_factor, prior_flag, sizes, size_force)
         return self.atten
     
 
