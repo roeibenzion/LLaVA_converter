@@ -1048,7 +1048,6 @@ def train(attn_implementation=None):
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        args=training_args,          # your existing TrainingArguments
         callbacks=[GradNormLogger(every=1)],   # ← INSTANCE, not class
         **data_module
     )
