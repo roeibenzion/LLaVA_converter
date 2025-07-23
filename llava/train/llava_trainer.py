@@ -273,7 +273,6 @@ class LLaVATrainer(Trainer):
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
             if hasattr(opt_model, "fga"):
-                print("good")
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 atten_parameters = [name for name, _ in opt_model.named_parameters() if "atten" in name]
                 optimizer_grouped_parameters = [
@@ -284,14 +283,14 @@ class LLaVATrainer(Trainer):
 
                         ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 1e-3,
+                        "lr": 1e-4,
                     },
                     { # atten no weight decay
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in atten_parameters and p.requires_grad)
                             ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 1e-3,
+                        "lr": 1e-4,
                     },
                     { # all projector parameters
                         "params": [
@@ -383,16 +382,6 @@ class LLaVATrainer(Trainer):
                         manager.register_module_override(module, "weight", {"optim_bits": 32})
                         logger.debug(f"bitsandbytes: will optimize {module} in fp32")
                 logger.info(f"skipped: {skipped/2**20}M params")
-
-        # print every group in the optimizer
-        for i, group in enumerate(self.optimizer.param_groups):
-            print(f"Optimizer group {i}:")
-            for p in group["params"]:
-                for name, param in opt_model.named_parameters():
-                    if p is param:
-                        print(f"  {name:<60} | shape={tuple(param.shape)} | size={param.numel():,}")
-                        break
-            print(f"  weight_decay={group['weight_decay']}, lr={group['lr']}")
         return self.optimizer
 
     def _save_checkpoint(self, model, trial, metrics=None):
