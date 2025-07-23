@@ -409,7 +409,7 @@ class LlavaMetaForCausalLM(ABC):
             position_ids = None
         
         dump_stats(new_input_embeds[0], "final_inputs_embeds")          # first sample
-        print("[DEBUG] pos‑ids first 20:", position_ids[0,:20].tolist())
+        # print("[DEBUG] pos‑ids first 20:", position_ids[0,:20].tolist())
         loc = (new_input_embeds[0] == image_features[0,0]).all(dim=-1).nonzero()[0].item()
         print(f"[DEBUG] first image token index = {loc}")
         print("[DEBUG] pos‑id at first text after image:",
