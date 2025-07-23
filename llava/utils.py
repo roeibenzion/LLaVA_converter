@@ -13,6 +13,55 @@ moderation_msg = "YOUR INPUT VIOLATES OUR CONTENT MODERATION GUIDELINES. PLEASE 
 
 handler = None
 import torch
+import torch, json, random, textwrap, html
+from pathlib import Path
+
+class LLMLogger:
+    """Lightweight probe that prints one sample every `every` steps."""
+    def __init__(self, tokenizer, every=100, out_file="llm_debug.log"):
+        self.tok = tokenizer
+        self.every = every
+        self.file = Path(out_file).open("a")
+
+    def _nice(self, ids):
+        # human‑readable decode, keeps special tokens
+        return self.tok.decode(ids, skip_special_tokens=False)\
+                       .replace("\n", "\\n")[:300]
+
+    def log(self, step, input_ids, inputs_embeds,
+                   labels, attention_mask, position_ids):
+        if step % self.every:                      # log sparsely
+            return
+        bs = labels.size(0)
+        i  = random.randrange(bs)                  # pick a random sample
+        tok_in  = input_ids[i].tolist() if input_ids is not None else None
+        txt_in  = self._nice(tok_in) if tok_in else "<embed‑only>"
+        txt_lbl = self._nice([ t if t != -100 else self.tok.pad_token_id
+                               for t in labels[i].tolist() ])
+
+        # basic sanity flags
+        pad_ok  = torch.all(labels[i][attention_mask[i]==0] == -100).item()
+        img_ok  = torch.all(labels[i][input_ids[i]==self.tok.convert_tokens_to_ids("<image>")] == -100).item() \
+                  if input_ids is not None else True
+        pos_mon = (position_ids is None or
+                   torch.all(position_ids[i].diff()[attention_mask[i,1:]==1] >= 0).item())
+
+        record = dict(
+            step = int(step),
+            seq_len = int(attention_mask[i].sum()),
+            n_img = int((input_ids[i] == self.tok.convert_tokens_to_ids("<image>")).sum())
+                    if input_ids is not None else 0,
+            pad_mask_ok   = bool(pad_ok),
+            image_mask_ok = bool(img_ok),
+            pos_monotone  = bool(pos_mon),
+            input  = txt_in,
+            target = txt_lbl
+        )
+        self.file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        self.file.flush()
+        print("[LLM‑LOG]", textwrap.shorten(record["input"], width=120))
+
+llm_logger = None        # will hold the singleton
 
 def dump_stats(t, name):
     if isinstance(t, torch.Tensor):

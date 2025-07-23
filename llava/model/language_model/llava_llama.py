@@ -25,7 +25,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateOutput
 
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
-
+from llava.utils import LLMLogger
 
 class LlavaConfig(LlamaConfig):
     model_type = "llava_llama"
@@ -48,6 +48,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         # Initialize weights and apply final processing
         self.post_init()
+        self.llm_logger = LLMLogger(tokenizer=self.get_model().tokenizer, every=100)
 
     def get_model(self):
         return self.model
@@ -72,6 +73,14 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         if images is not None:
             image_sizes = [image.shape[-2:] for image in images]
+        self.llm_logger.log(
+        step = getattr(self, "_global_step", 0),
+        input_ids = input_ids,
+        inputs_embeds = inputs_embeds,
+        labels = labels,
+        attention_mask = attention_mask,
+        position_ids = position_ids
+    )
         if inputs_embeds is None:
             (
                 input_ids,
