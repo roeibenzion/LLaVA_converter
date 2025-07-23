@@ -25,7 +25,69 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateOutput
 
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
-from llava.utils import LLMLogger
+
+# ------------------- LLM Input Inspector -------------------
+import random, torch, itertools, textwrap
+from torch.nn import functional as F
+
+class LLMInputLogger:
+    def __init__(self, tokenizer, every_steps=200, sample=0):
+        self.tokenizer   = tokenizer
+        self.every_steps = every_steps
+        self.sample      = sample
+        self._step       = 0
+
+    def __call__(self, input_ids, inputs_embeds, attention_mask,
+                 position_ids, labels, logits=None):
+        self._step += 1
+        if self._step % self.every_steps:
+            return
+
+        s = self.sample  # which item in the batch to print
+        emb_stats = dict(
+            shape = list(inputs_embeds.shape),
+            dtype = str(inputs_embeds.dtype),
+            mu    = f"{inputs_embeds.mean():+.3e}",
+            sigma = f"{inputs_embeds.std():.3e}",
+            min   = f"{inputs_embeds.min():+.3e}",
+            max   = f"{inputs_embeds.max():+.3e}",
+        )
+
+        print("\n" + "="*70)
+        print(f"[LLM-LOGGER step {self._step}] inputs_embeds stats →", emb_stats)
+        print(f"[LLM-LOGGER] attention_mask[{s}]  :", attention_mask[s, :50].tolist())
+        if position_ids is not None:
+            print(f"[LLM-LOGGER] position_ids[{s}]   :", position_ids[s, :50].tolist())
+
+        # BOS-shift / padding / image-token check
+        BOS = self.tokenizer.bos_token_id
+        IMG = IMAGE_TOKEN_INDEX
+        PAD = self.tokenizer.pad_token_id
+        IGN = IGNORE_INDEX
+
+        inp_txt = self.tokenizer.decode(
+            [t for t in input_ids[s].tolist() if t not in (PAD, IMG)],
+            skip_special_tokens=False
+        )
+        lbl_txt = self.tokenizer.decode(
+            [t if t != IGN else PAD for t in labels[s].tolist()],
+            skip_special_tokens=False
+        )
+        print("\n» INPUT  :", textwrap.shorten(inp_txt, 120))
+        print("» LABEL  :", textwrap.shorten(lbl_txt, 120))
+
+        if logits is not None:
+            pred = logits[s, :-1].argmax(-1)        # teacher forcing: predict t+1
+            pred_txt = self.tokenizer.decode(
+                [t for t in pred.tolist() if t not in (PAD, IMG)],
+                skip_special_tokens=False
+            )
+            print("» PRED   :", textwrap.shorten(pred_txt, 120))
+
+        # quick invariants
+        assert labels[s, 0] == IGN, "label[0] should be IGNORE (BOS shift)"
+        assert (labels[s][input_ids[s] == IMG] == IGN).all(), "<image> token not masked"
+        print("="*70 + "\n")
 
 class LlavaConfig(LlamaConfig):
     model_type = "llava_llama"
@@ -39,6 +101,8 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
 
 class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     config_class = LlavaConfig
+    logger = None   # will hold the singleton
+
 
     def __init__(self, config):
         super(LlamaForCausalLM, self).__init__(config)
@@ -48,7 +112,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         # Initialize weights and apply final processing
         self.post_init()
-        self.llm_logger = LLMLogger(tokenizer=self.get_model().tokenizer, every=100)
 
     def get_model(self):
         return self.model
@@ -73,14 +136,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         if images is not None:
             image_sizes = [image.shape[-2:] for image in images]
-        self.llm_logger.log(
-        step = getattr(self, "_global_step", 0),
-        input_ids = input_ids,
-        inputs_embeds = inputs_embeds,
-        labels = labels,
-        attention_mask = attention_mask,
-        position_ids = position_ids
-    )
         if inputs_embeds is None:
             (
                 input_ids,
@@ -98,6 +153,15 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 images,
                 image_sizes
             )
+        if LlavaLlamaForCausalLM.logger is None:
+            LlavaLlamaForCausalLM.logger = LLMInputLogger(
+                tokenizer=self.tokenizer, every_steps=200, sample=0
+            )
+
+        # Optional: get logits too, so call the logger *after* fwd.
+        # We'll store inputs first
+        _log_inputs = (input_ids, inputs_embeds, attention_mask,
+                    position_ids, labels)
         # Forward pass through the main model
         output = super().forward(
             input_ids=input_ids,
@@ -111,6 +175,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict
         )
+        if LlavaLlamaForCausalLM.logger is not None:
+            LlavaLlamaForCausalLM.logger(*_log_inputs, output.logits)
 
         return output
 
