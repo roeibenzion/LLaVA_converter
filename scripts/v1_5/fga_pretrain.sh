@@ -16,7 +16,7 @@ deepspeed llava/train/train_mem.py \
     --image_grid_pinpoints  "(1x1),...,(6x6)" \
     --fga True \
     --bf16 True \
-    --output_dir ./checkpoints/llava-v1.5-7b-pretrain \
+    --output_dir /workspace/checkpoints/llava-v1.5-7b-pretrain \
     --num_train_epochs 1 \
     --per_device_train_batch_size 32 \
     --per_device_eval_batch_size 4 \
