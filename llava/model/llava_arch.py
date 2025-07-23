@@ -407,14 +407,7 @@ class LlavaMetaForCausalLM(ABC):
 
         if _position_ids is None:
             position_ids = None
-        
-        dump_stats(new_input_embeds[0], "final_inputs_embeds")          # first sample
-        # print("[DEBUG] pos‑ids first 20:", position_ids[0,:20].tolist())
-        loc = (new_input_embeds[0] == image_features[0,0]).all(dim=-1).nonzero()[0].item()
-        print(f"[DEBUG] first image token index = {loc}")
-        print("[DEBUG] pos‑id at first text after image:",
-            position_ids[0, loc+image_features.shape[1]].item())
-
+    
         return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels
 
         
