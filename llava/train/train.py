@@ -1012,7 +1012,7 @@ def train(attn_implementation=None):
             similar_modalities = [[i for i in range(2, num_of_patches + 1)]]
             sharing_factor[2] = (1, [0])
 
-            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities, skip_modalities=skip_modalities).to(dtype=compute_dtype, device=training_args.device)
+            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
         
