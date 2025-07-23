@@ -100,7 +100,7 @@ class Atten(nn.Module):
         :param self_flag: use self interactions between utilitie's entities
         :param similar_modalities: list of lists of similar modalities for cross-attention, in the form of idx. Example: [[1,2,6,8], [0, 9]] -> modalities 1, 2, 6, and 8 are similar, 0, 9 are similar. 
         The purpose is to allow complete weight sharing between these modalities. 
-        : param skip_modalities: list of modalities to skip in the attention computation within themselves (use case: modalities we do not use in the output).
+        :param skip_modalities: list of modalities to skip in the attention computation within themselves (use case: modalities we do not use in the output).
         """
         super(Atten, self).__init__()
         self.util_e = util_e
@@ -271,7 +271,7 @@ class Atten(nn.Module):
 
         # handle local factors
         for i in range(self.n_utils):
-            if i in self.sharing_factor_weights:
+            if i in self.sharing_factor_weights or i in self.skip_modalities:
                 continue
             if self.unary_flag:
                 util_factors.setdefault(i, []).append(self.un_models[i](utils[i]))
