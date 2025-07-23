@@ -14,6 +14,42 @@ from transformers.trainer import (
 )
 from typing import List, Optional
 
+from transformers import TrainerCallback
+import torch, math, itertools
+
+class GradAndDeltaMonitor(TrainerCallback):
+    def __init__(self, every=100):
+        self.every = every
+        self.snapshot = {}
+
+    def on_train_begin(self, args, state, control, **kw):
+        model = kw["model"]
+        # take an initial weight snapshot for delta tracking
+        self.snapshot = {n: p.detach().clone().cpu()
+                         for n, p in model.named_parameters()
+                         if p.requires_grad}
+
+    def on_step_end(self, args, state, control, **kw):
+        if state.global_step % self.every:
+            return
+        model = kw["model"]
+
+        # pick a few representative tensors to keep the log short
+        watch = [n for n in model.state_dict().keys()
+                 if any(k in n for k in ["mm_projector", "my_model", "mlp"])]
+        watch = list(itertools.islice(watch, 3))
+
+        for n in watch:
+            p = model.state_dict()[n]
+            if p.grad is None:
+                print(f"[step {state.global_step}] {n}: grad=None ❌")
+                continue
+            grad_mean = p.grad.abs().mean().item()
+            delta = (p.detach().cpu() - self.snapshot[n]).abs().mean().item()
+            self.snapshot[n] = p.detach().cpu()
+            print(f"[step {state.global_step}] {n}: "
+                  f"grad μ={grad_mean:.3e} | Δw={delta:.3e}")
+
 
 def maybe_zero_3(param, ignore_status=False, name=None):
     from deepspeed import zero

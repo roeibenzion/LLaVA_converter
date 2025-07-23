@@ -12,7 +12,14 @@ server_error_msg = "**NETWORK ERROR DUE TO HIGH TRAFFIC. PLEASE REGENERATE OR RE
 moderation_msg = "YOUR INPUT VIOLATES OUR CONTENT MODERATION GUIDELINES. PLEASE TRY AGAIN."
 
 handler = None
+import torch
 
+def dump_stats(t, name):
+    if isinstance(t, torch.Tensor):
+        print(f"[DEBUG] {name:<20} "
+              f"shape={list(t.shape)}, "
+              f"μ={t.mean():+.2e}, σ={t.std():.2e}, "
+              f"min={t.min():+.2e}, max={t.max():+.2e}")
 
 def build_logger(logger_name, logger_filename):
     global handler

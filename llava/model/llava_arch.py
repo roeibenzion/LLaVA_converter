@@ -14,6 +14,8 @@
 
 import torch.nn.functional as F
 from abc import ABC, abstractmethod
+
+from llava.utils import dump_stats
 from .multimodal_projector.fga.attn import Atten 
 
 import torch
@@ -25,6 +27,7 @@ from .multimodal_projector.builder import build_vision_projector
 from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 
 from llava.mm_utils import get_anyres_image_grid_shape
+import utils
 
 class CrossAttentionLayer(nn.Module):
     def __init__(self, llm_hidden_size, image_hidden_size, num_heads, dropout=0.1):
@@ -265,7 +268,7 @@ class LlavaMetaForCausalLM(ABC):
         return image_features
 
     def inputs_for_atten(self, input_ids, position_ids, attention_mask, past_key_values, labels,
-        images, image_sizes=None):
+        images):
         num_patches_per_image = [image.shape[0] for image in images]
         # Let's just add dummy tensors if they do not exist,
         # it is a headache to deal with None all the time.
@@ -291,6 +294,8 @@ class LlavaMetaForCausalLM(ABC):
         H_q = self.get_textual_tokens(input_ids, labels)
         # Turn (b, n+1, 576, 1024) into n+1 tensors of (b, 576, 1024)
         X_v = torch.stack(X_v, dim=0).transpose(0, 1)
+        utils.dump_stats(X_v[:,0,0], "clip_cls")          # one CLS per image
+        utils.dump_stats(X_v[:,0,1:], "clip_patches")     # the 576 patches
         param_attn = [H_q] + list(X_v)
         patches_attn = self.atten(param_attn)[1:]
         X_v = torch.stack(patches_attn, dim=1)
@@ -298,6 +303,7 @@ class LlavaMetaForCausalLM(ABC):
         concat_X_v = torch.cat([X_v[i] for i in range(X_v.shape[0])], dim=0)
         # (b*(n+1), 1024)
         image_features = self.get_model().mm_projector(concat_X_v)
+        utils.dump_stats(image_features, "after_mm_projector")
         # (b*(n+1), 4096)
         split_sizes = [image.shape[0] for image in images]
         image_features = torch.split(image_features, split_sizes, dim=0)
@@ -403,6 +409,13 @@ class LlavaMetaForCausalLM(ABC):
 
         if _position_ids is None:
             position_ids = None
+        
+        dump_stats(new_input_embeds[0], "final_inputs_embeds")          # first sample
+        print("[DEBUG] pos‑ids first 20:", position_ids[0,:20].tolist())
+        loc = (new_input_embeds[0] == image_features[0,0]).all(dim=-1).nonzero()[0].item()
+        print(f"[DEBUG] first image token index = {loc}")
+        print("[DEBUG] pos‑id at first text after image:",
+            position_ids[0, loc+image_features.shape[1]].item())
 
         return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels
 

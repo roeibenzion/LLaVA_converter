@@ -44,31 +44,23 @@ local_rank = None
 from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
 import torch
 
-class GradNormLogger(TrainerCallback):
-    def __init__(self, every: int = 10):
-        self.every = every
-
-    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        if state.global_step % self.every == 0 and kwargs.get("model") is not None:
-            model = kwargs["model"]
-            total_norm = 0.0
-            for p in model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5
-            print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
-    
-    def on_optimizer_step(self, args, state, control, **kwargs):
-        model = kwargs["model"]
-        total_norm = 0.0
-        for p in model.parameters():
-            if p.grad is not None:
-                param_norm = p.grad.data.norm(2)
-                total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5
-        print(f"[Step {state.global_step}] Gradient Norm: {total_norm:.4f}")
-
+def print_trainable_summary(model):
+    total, trainable = 0, 0
+    for n, p in model.named_parameters():
+        num = p.numel()
+        total += num
+        if p.requires_grad:
+            trainable += num
+    print(f"[DEBUG] total params: {total/1e6:.2f} M")
+    print(f"[DEBUG] trainable params: {trainable/1e6:.2f} M "
+          f"({trainable/total:.2%})")
+    # list a few key blocks
+    for key in ("mm_projector", "my_model", "mlp"):
+        block = {n: p for n, p in model.named_parameters()
+                 if key in n and p.requires_grad}
+        if block:
+            size = sum(p.numel() for p in block.values())/1e6
+            print(f"  · {key:<15} {size:>6.2f} M params")
 
 def rank0_print(*args):
     if local_rank == 0:
@@ -892,6 +884,15 @@ def train(attn_implementation=None):
             torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
             **bnb_model_from_pretrained_args
         )
+
+    print_trainable_summary(model)
+    assert all(not p.requires_grad for n, p in model.named_parameters()
+           if 'vision_tower' in n), "Vision tower accidentally trainable!"
+
+    # 2. Your new adapter should be trainable
+    assert any(p.requires_grad for n,p in model.named_parameters()
+            if 'my_model' in n), "Custom adapter frozen!"
+    
     model.config.use_cache = False
 
     if model_args.freeze_backbone:
@@ -1019,11 +1020,6 @@ def train(attn_implementation=None):
             similar_modalities = [[i for i in range(2, num_of_patches + 1)]]
             sharing_factor[2] = (1, [0])
 
-            # for i in range(1, num_of_patches + 1):
-            #     # NOTE: only one util for now which is the text
-            #     sharing_factor[i] = (1, [0])
-
-            skip_modalities = [0]  # Skip text modality
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities, skip_modalities=skip_modalities).to(dtype=compute_dtype, device=training_args.device)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
@@ -1045,11 +1041,13 @@ def train(attn_implementation=None):
                                               data_args=data_args)
 
 
+    from llava_trainer import GradAndDeltaMonitor
+
     trainer = LLaVATrainer(
         model=model,
         tokenizer=tokenizer,
-        args=training_args,
-        callbacks=[GradNormLogger(every=1)],   # ← INSTANCE, not class
+        args=training_args, 
+        callbacks=[GradAndDeltaMonitor(every=100)],
         **data_module
     )
 
