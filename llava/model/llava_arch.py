@@ -290,20 +290,9 @@ class LlavaMetaForCausalLM(ABC):
         X_v = self.get_image_features(images, num_patches_per_image)
         H_q = self.get_textual_tokens(input_ids, labels)
 
-        split_images = X_v
-        N = X_v[0].shape[0]
-        patches_atten = []
-        for i in range(N):
-            center_patch = torch.stack([split_images[j][i] for j in range(len(split_images))])
-            # size (b, 576, 1024)
-            rest_patches = [torch.stack([split_images[j][k] for j in range(len(split_images))]) 
-                            for k in range(N) if k != i]
-            # size [(b, 576, 1024) for n]
-            params = [H_q, center_patch] + rest_patches
-            out = self.atten(params)[1]
-            patches_atten.append(out)
-        # (n+1, b, 1024)
-        X_v = torch.stack(patches_atten, dim=1)
+        param_attn = [H_q] + [X_v_i for X_v_i in X_v]
+        patches_attn = self.atten(param_attn)[1:]
+        X_v = torch.stack(patches_attn, dim=1)
         # (b, n+1, 1024)
         concat_X_v = torch.cat([X_v[i] for i in range(X_v.shape[0])], dim=0)
         # (b*(n+1), 1024)
