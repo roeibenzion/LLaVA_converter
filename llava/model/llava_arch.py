@@ -340,7 +340,7 @@ class LlavaMetaForCausalLM(ABC):
             num_images_per_batch.append(num_images)
             cur_new_input_embeds = []
             cur_new_labels = []
-            
+
             for i in range(num_images + 1):
                 cur_new_input_embeds.append(cur_input_embeds_no_im[i])
                 cur_new_labels.append(cur_labels_noim[i])
@@ -425,7 +425,7 @@ class LlavaMetaForCausalLM(ABC):
         use_attn = hasattr(self, "atten") and self.atten is not None
         if use_attn:
             print("using attention")
-            return self.inputs_for_atten(input_ids, position_ids, attention_mask, past_key_values, labels, images, image_sizes)
+            return self.inputs_for_atten(input_ids, position_ids, attention_mask, past_key_values, labels, images)
         vision_tower = self.get_vision_tower()
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
             return input_ids, position_ids, attention_mask, past_key_values, None, labels
