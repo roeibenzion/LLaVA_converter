@@ -1022,7 +1022,7 @@ def train(attn_implementation=None):
 
     # 2. Your new adapter should be trainable
     assert any(p.requires_grad for n,p in model.named_parameters()
-            if 'my_model' in n), "Custom adapter frozen!"
+            if 'atten' in n), "Custom adapter frozen!"
 
     if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer
