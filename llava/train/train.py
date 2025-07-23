@@ -884,14 +884,6 @@ def train(attn_implementation=None):
             torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
             **bnb_model_from_pretrained_args
         )
-
-    print_trainable_summary(model)
-    assert all(not p.requires_grad for n, p in model.named_parameters()
-           if 'vision_tower' in n), "Vision tower accidentally trainable!"
-
-    # 2. Your new adapter should be trainable
-    assert any(p.requires_grad for n,p in model.named_parameters()
-            if 'my_model' in n), "Custom adapter frozen!"
     
     model.config.use_cache = False
 
@@ -1023,6 +1015,14 @@ def train(attn_implementation=None):
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities, skip_modalities=skip_modalities).to(dtype=compute_dtype, device=training_args.device)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
+        
+    print_trainable_summary(model)
+    assert all(not p.requires_grad for n, p in model.named_parameters()
+           if 'vision_tower' in n), "Vision tower accidentally trainable!"
+
+    # 2. Your new adapter should be trainable
+    assert any(p.requires_grad for n,p in model.named_parameters()
+            if 'my_model' in n), "Custom adapter frozen!"
 
     if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer
