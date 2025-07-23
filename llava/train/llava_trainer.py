@@ -319,28 +319,28 @@ class LLaVATrainer(Trainer):
 
                         ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 1e-4,
+                        "lr": 1e-3,
                     },
                     { # atten no weight decay
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in atten_parameters and p.requires_grad)
                             ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 1e-4,
+                        "lr": 1e-3,
                     },
                     { # all projector parameters
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
                         ],
                         "weight_decay": self.args.weight_decay,
-                        "lr": 1e-4,
+                        "lr": 5e-4,
                     }, 
                     { # no weight decay projector parameters
                         "params": [
                             p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
                         ],
                         "weight_decay": self.args.weight_decay,
-                        "lr" : 1e-4,
+                        "lr" : 5e-4,
                     }
                 ]
             elif self.args.mm_projector_lr is not None:
