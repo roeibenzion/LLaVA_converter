@@ -289,8 +289,9 @@ class LlavaMetaForCausalLM(ABC):
 
         X_v = self.get_image_features(images, num_patches_per_image)
         H_q = self.get_textual_tokens(input_ids, labels)
-
-        param_attn = [H_q] + [X_v_i for X_v_i in X_v]
+        # Turn (b, n+1, 576, 1024) into n+1 tensors of (b, 576, 1024)
+        X_v = torch.stack(X_v, dim=0).transpose(0, 1)
+        param_attn = [H_q] + list(X_v)
         patches_attn = self.atten(param_attn)[1:]
         X_v = torch.stack(patches_attn, dim=1)
         # (b, n+1, 1024)
