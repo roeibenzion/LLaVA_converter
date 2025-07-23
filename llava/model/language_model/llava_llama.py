@@ -153,15 +153,15 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 images,
                 image_sizes
             )
-        if LlavaLlamaForCausalLM.logger is None:
-            LlavaLlamaForCausalLM.logger = LLMInputLogger(
-                tokenizer=self.tokenizer, every_steps=200, sample=0
-            )
+        # if LlavaLlamaForCausalLM.logger is None:
+        #     LlavaLlamaForCausalLM.logger = LLMInputLogger(
+        #         tokenizer=self.tokenizer, every_steps=200, sample=0
+        #     )
 
-        # Optional: get logits too, so call the logger *after* fwd.
-        # We'll store inputs first
-        _log_inputs = (input_ids, inputs_embeds, attention_mask,
-                    position_ids, labels)
+        # # Optional: get logits too, so call the logger *after* fwd.
+        # # We'll store inputs first
+        # _log_inputs = (input_ids, inputs_embeds, attention_mask,
+        #             position_ids, labels)
         # Forward pass through the main model
         output = super().forward(
             input_ids=input_ids,
@@ -175,8 +175,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict
         )
-        if LlavaLlamaForCausalLM.logger is not None:
-            LlavaLlamaForCausalLM.logger(*_log_inputs, output.logits)
+        # if LlavaLlamaForCausalLM.logger is not None:
+        #     LlavaLlamaForCausalLM.logger(*_log_inputs, output.logits)
 
         return output
 
