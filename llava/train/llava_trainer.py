@@ -429,14 +429,16 @@ class LLaVATrainer(Trainer):
             output_dir = os.path.join(run_dir, checkpoint_folder)
 
             # Only save Adapter
-            keys_to_match = ['mm_projector', 'vision_resampler']
+            keys_to_match = ['mm_projector', 'vision_resampler', 'atten']
             if getattr(self.args, "use_im_start_end", False):
                 keys_to_match.extend(['embed_tokens', 'embed_in'])
 
             weight_to_save = get_mm_adapter_state_maybe_zero_3(self.model.named_parameters(), keys_to_match)
 
             if self.args.local_rank == 0 or self.args.local_rank == -1:
-                self.model.config.save_pretrained(output_dir)
+                # self.model.config.save_pretrained(output_dir)
+                config = _sanitize_config(self.model.config)
+                config.save_pretrained(output_dir)
                 torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
         else:
             super(LLaVATrainer, self)._save_checkpoint(model, trial, metrics)
@@ -446,3 +448,13 @@ class LLaVATrainer(Trainer):
             pass
         else:
             super(LLaVATrainer, self)._save(output_dir, state_dict)
+
+def _sanitize_config(config):
+    for key, value in list(config.to_dict().items()):
+        if "dtype" in key or isinstance(value, (torch.dtype, type(torch.float32))):
+            setattr(config, key, str(value))
+        elif isinstance(value, dict):
+            for subkey, subval in value.items():
+                if isinstance(subval, (torch.dtype, type(torch.float32))):
+                    value[subkey] = str(subval)
+    return config

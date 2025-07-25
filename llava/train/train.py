@@ -44,6 +44,16 @@ local_rank = None
 from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
 import torch
 
+
+def _sanitize_config_dtype(config):
+    for key, value in config.to_dict().items():
+        if isinstance(value, torch.dtype):
+            setattr(config, key, str(value))
+        elif isinstance(value, dict):
+            for subkey, subval in value.items():
+                if isinstance(subval, torch.dtype):
+                    value[subkey] = str(subval)
+    return config
 def print_trainable_summary(model):
     total, trainable = 0, 0
     for n, p in model.named_parameters():
@@ -1061,7 +1071,8 @@ def train(attn_implementation=None):
     trainer.save_state()
 
     model.config.use_cache = True
-
+    
+    model.config = _sanitize_config_dtype(model.config)
     if training_args.lora_enable:
         state_dict = get_peft_state_maybe_zero_3(
             model.named_parameters(), training_args.lora_bias
@@ -1069,11 +1080,6 @@ def train(attn_implementation=None):
         non_lora_state_dict = get_peft_state_non_lora_maybe_zero_3(
             model.named_parameters()
         )
-        import numpy as np
-
-        for k, v in vars(model.config).items():
-            if isinstance(v, np.dtype):
-                setattr(model.config, k, str(v))
 
         model.config.save_pretrained(training_args.output_dir)
         if training_args.local_rank == 0 or training_args.local_rank == -1:
@@ -1081,10 +1087,6 @@ def train(attn_implementation=None):
             model.save_pretrained(training_args.output_dir, state_dict=state_dict)
             torch.save(non_lora_state_dict, os.path.join(training_args.output_dir, 'non_lora_trainables.bin'))
     else:
-        import numpy as np
-        for k, v in vars(trainer.model.config).items():
-            if isinstance(v, np.dtype):
-                setattr(trainer.model.config, k, str(v))
         safe_save_model_for_hf_trainer(trainer=trainer,
                                        output_dir=training_args.output_dir)
 
