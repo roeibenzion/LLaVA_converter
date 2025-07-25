@@ -16,6 +16,8 @@ from typing import List, Optional
 
 from transformers import TrainerCallback
 import torch, math, itertools
+import random
+import numpy as np
 
 class GradAndDeltaMonitor(TrainerCallback):
     def __init__(self, every=100):
@@ -423,12 +425,12 @@ class LLaVATrainer(Trainer):
     def _save_checkpoint(self, model, trial, metrics=None):
         if getattr(self.args, 'tune_mm_mlp_adapter', False):
             from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
-            checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
 
+            checkpoint_folder = f"{PREFIX_CHECKPOINT_DIR}-{self.state.global_step}"
             run_dir = self._get_output_dir(trial=trial)
             output_dir = os.path.join(run_dir, checkpoint_folder)
 
-            # Only save Adapter
+            # Save adapter weights only
             keys_to_match = ['mm_projector', 'vision_resampler']
             if getattr(self.args, "use_im_start_end", False):
                 keys_to_match.extend(['embed_tokens', 'embed_in'])
@@ -436,15 +438,28 @@ class LLaVATrainer(Trainer):
             if getattr(self.args, "fga", False):
                 keys_to_match.extend(['atten'])
 
-            weight_to_save = get_mm_adapter_state_maybe_zero_3(self.model.named_parameters(), keys_to_match)
+            weight_to_save = get_mm_adapter_state_maybe_zero_3(model.named_parameters(), keys_to_match)
 
-            if self.args.local_rank == 0 or self.args.local_rank == -1:
-                # self.model.config.save_pretrained(output_dir)
+            if self.args.local_rank in [0, -1]:
                 config = _sanitize_config(self.model.config)
                 config.save_pretrained(output_dir)
-                torch.save(weight_to_save, os.path.join(output_dir, f'llava_model.bin'))
+                torch.save(weight_to_save, os.path.join(output_dir, "mm_projector.bin"))
+                torch.save(self.optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
+                torch.save(self.lr_scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
+                rng_state = {
+                "python":  random.getstate(),
+                "numpy":   np.random.get_state(),
+                "torch":   torch.get_rng_state(),
+                "cuda":    torch.cuda.get_rng_state_all(),
+            }
+            if self.args.world_size <= 1:
+                torch.save(rng_state, os.path.join(output_dir, "rng_state.pth"))
+            else:
+                torch.save(rng_state, os.path.join(output_dir, f"rng_state_{self.args.process_index}.pth"))
+
+            self.state.save_to_json(os.path.join(output_dir, "trainer_state.json"))
         else:
-            super(LLaVATrainer, self)._save_checkpoint(model, trial, metrics)
+            super()._save_checkpoint(model, trial, metrics)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         if getattr(self.args, 'tune_mm_mlp_adapter', False):

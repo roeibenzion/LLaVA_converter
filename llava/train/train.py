@@ -43,6 +43,37 @@ local_rank = None
 
 from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
 import torch
+import random
+import numpy as np
+
+def resume_training_from_custom_checkpoint(model, trainer, checkpoint_path):
+    
+    if trainer.optimizer is None or trainer.lr_scheduler is None:
+        trainer.create_optimizer_and_scheduler(num_training_steps=0)
+
+    # 1. Load adapter weights
+    adapter_weights = torch.load(os.path.join(checkpoint_path, "mm_projector.bin"), map_location="cpu")
+    model.load_state_dict(adapter_weights, strict=False)
+
+    # 2. Load optimizer and scheduler
+    trainer.optimizer.load_state_dict(torch.load(os.path.join(checkpoint_path, "optimizer.pt")))
+    trainer.lr_scheduler.load_state_dict(torch.load(os.path.join(checkpoint_path, "scheduler.pt")))
+
+    # 3. Load trainer state (global step, log history)
+    trainer.state = TrainerState.load_from_json(os.path.join(checkpoint_path, "trainer_state.json"))
+
+    rng_fname = (
+        "rng_state.pth"
+        if trainer.args.world_size <= 1
+        else f"rng_state_{trainer.args.process_index}.pth"
+    )
+    rng_state = torch.load(os.path.join(checkpoint_path, rng_fname), map_location="cpu")
+
+    random.setstate(rng_state["python"])
+    np.random.set_state(rng_state["numpy"])
+    torch.set_rng_state(rng_state["torch"])
+    for idx, cuda_state in enumerate(rng_state["cuda"]):
+        torch.cuda.set_rng_state(cuda_state, idx)
 
 
 def _sanitize_config_dtype(config):
@@ -243,9 +274,13 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer,
         keys_to_match = ['mm_projector']
         if getattr(trainer.args, "use_im_start_end", False):
             keys_to_match.extend(['embed_tokens', 'embed_in'])
+        if getattr(trainer.args, "fga", False):
+            keys_to_match.extend(['atten'])
 
         weight_to_save = get_mm_adapter_state_maybe_zero_3(trainer.model.named_parameters(), keys_to_match)
-        trainer.model.config.save_pretrained(output_dir)
+        model_config = _sanitize_config_dtype(trainer.model.config)
+
+        model_config.save_pretrained(output_dir)
 
         current_folder = output_dir.split('/')[-1]
         parent_folder = os.path.dirname(output_dir)
@@ -1062,11 +1097,23 @@ def train(attn_implementation=None):
         **data_module
     )
 
+    from pathlib import Path
+    checkpoint_dirs = list(Path(training_args.output_dir).glob("checkpoint-*"))
 
-    if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
-        trainer.train(resume_from_checkpoint=True)
-    else:
-        trainer.train()
+    if checkpoint_dirs:
+        # Extract the checkpoint step numbers and find the max
+        def get_step(path):
+            try:
+                return int(path.name.split("-")[-1])
+            except ValueError:
+                return -1
+
+        latest_checkpoint = max(checkpoint_dirs, key=get_step)
+
+        print(f"Resuming from latest checkpoint: {latest_checkpoint}")
+        resume_training_from_custom_checkpoint(model, trainer, str(latest_checkpoint))
+
+    trainer.train()
     trainer.save_state()
 
     model.config.use_cache = True
