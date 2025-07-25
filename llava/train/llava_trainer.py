@@ -439,7 +439,7 @@ class LLaVATrainer(Trainer):
                 # self.model.config.save_pretrained(output_dir)
                 config = _sanitize_config(self.model.config)
                 config.save_pretrained(output_dir)
-                torch.save(weight_to_save, os.path.join(output_dir, f'mm_projector.bin'))
+                torch.save(weight_to_save, os.path.join(output_dir, f'llava_model.bin'))
         else:
             super(LLaVATrainer, self)._save_checkpoint(model, trial, metrics)
 
