@@ -51,16 +51,16 @@ def print_trainable_summary(model):
         total += num
         if p.requires_grad:
             trainable += num
-    print(f"[DEBUG] total params: {total/1e6:.2f} M")
-    print(f"[DEBUG] trainable params: {trainable/1e6:.2f} M "
-          f"({trainable/total:.2%})")
+    # print(f"[DEBUG] total params: {total/1e6:.2f} M")
+    # print(f"[DEBUG] trainable params: {trainable/1e6:.2f} M "
+    #       f"({trainable/total:.2%})")
     # list a few key blocks
     for key in ("mm_projector", "my_model", "mlp"):
         block = {n: p for n, p in model.named_parameters()
                  if key in n and p.requires_grad}
         if block:
             size = sum(p.numel() for p in block.values())/1e6
-            print(f"  · {key:<15} {size:>6.2f} M params")
+            # print(f"  · {key:<15} {size:>6.2f} M params")
 
 def rank0_print(*args):
     if local_rank == 0:
@@ -1069,11 +1069,22 @@ def train(attn_implementation=None):
         non_lora_state_dict = get_peft_state_non_lora_maybe_zero_3(
             model.named_parameters()
         )
+        import numpy as np
+
+        for k, v in vars(model.config).items():
+            if isinstance(v, np.dtype):
+                setattr(model.config, k, str(v))
+
+        model.config.save_pretrained(training_args.output_dir)
         if training_args.local_rank == 0 or training_args.local_rank == -1:
             model.config.save_pretrained(training_args.output_dir)
             model.save_pretrained(training_args.output_dir, state_dict=state_dict)
             torch.save(non_lora_state_dict, os.path.join(training_args.output_dir, 'non_lora_trainables.bin'))
     else:
+        import numpy as np
+        for k, v in vars(trainer.model.config).items():
+            if isinstance(v, np.dtype):
+                setattr(trainer.model.config, k, str(v))
         safe_save_model_for_hf_trainer(trainer=trainer,
                                        output_dir=training_args.output_dir)
 
