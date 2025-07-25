@@ -1025,14 +1025,13 @@ def train(attn_implementation=None):
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
+            assert any(p.requires_grad for n,p in model.named_parameters()
+                if 'atten' in n), "Custom adapter frozen!"
         
     print_trainable_summary(model)
     assert all(not p.requires_grad for n, p in model.named_parameters()
            if 'vision_tower' in n), "Vision tower accidentally trainable!"
 
-    # 2. Your new adapter should be trainable
-    assert any(p.requires_grad for n,p in model.named_parameters()
-            if 'atten' in n), "Custom adapter frozen!"
     
     model.tokenizer = tokenizer
 
