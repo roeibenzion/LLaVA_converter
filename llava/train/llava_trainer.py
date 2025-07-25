@@ -452,10 +452,10 @@ class LLaVATrainer(Trainer):
                 "torch":   torch.get_rng_state(),
                 "cuda":    torch.cuda.get_rng_state_all(),
             }
-            if self.args.world_size <= 1:
-                torch.save(rng_state, os.path.join(output_dir, "rng_state.pth"))
-            else:
-                torch.save(rng_state, os.path.join(output_dir, f"rng_state_{self.args.process_index}.pth"))
+                if self.args.world_size <= 1:
+                    torch.save(rng_state, os.path.join(output_dir, "rng_state.pth"))
+                else:
+                    torch.save(rng_state, os.path.join(output_dir, f"rng_state_{self.args.process_index}.pth"))
 
             self.state.save_to_json(os.path.join(output_dir, "trainer_state.json"))
         else:
