@@ -431,7 +431,7 @@ class LLaVATrainer(Trainer):
             output_dir = os.path.join(run_dir, checkpoint_folder)
 
             # Save adapter weights only
-            keys_to_match = ['mm_projector', 'vision_resampler']
+            keys_to_match = ['mm_projector', 'vision_resampler', 'atten']
             if getattr(self.args, "use_im_start_end", False):
                 keys_to_match.extend(['embed_tokens', 'embed_in'])
             
