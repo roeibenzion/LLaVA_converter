@@ -115,6 +115,7 @@ tokenizer, model, image_processor, context_len = load_pretrained_model(
     get_model_name_from_path(inference_args.model_path),
     load_8bit=False,
     load_4bit=False,
+    fga = True,
     device=inference_args.device
 )
 

@@ -327,3 +327,28 @@ class KeywordsStoppingCriteria(StoppingCriteria):
         for i in range(output_ids.shape[0]):
             outputs.append(self.call_for_batch(output_ids[i].unsqueeze(0), scores))
         return all(outputs)
+
+
+    def separate_weights_from_bin(weight_path, module_prefix):
+        """
+        Extracts weights for a specific submodule from a full model state_dict.
+
+        Args:
+            weight_path (str): Path to the .bin file containing the full state_dict.
+            module_prefix (str): The prefix (e.g., 'encoder', 'backbone') of the submodule to extract.
+
+        Returns:
+            OrderedDict: A state_dict that can be loaded into the submodule.
+        """
+        from collections import OrderedDict
+        full_state_dict = torch.load(weight_path, map_location='cpu')  # Safe loading
+
+        filtered_state_dict = OrderedDict()
+        prefix = module_prefix + "."
+
+        for k, v in full_state_dict.items():
+            if k.startswith(prefix):
+                new_key = k[len(prefix):]  # Remove the prefix
+                filtered_state_dict[new_key] = v
+
+        return filtered_state_dict
