@@ -1041,9 +1041,15 @@ def train(attn_implementation=None):
         full_height = patches_height * 336  
         grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
-        if model_args.fga:
+        num_of_patches = patches_height * patches_width + 1
+        if model_args.pretrained_fga:
+                model.fga = True
+                from model.builder import load_fga_from_pretrained
+                load_fga_from_pretrained(model, model_args.pretrained_fga, training_args.device, num_of_patches=num_of_patches, compute_dtype=compute_dtype)
+                assert any(p.requires_grad for n,p in model.named_parameters()
+                if 'atten' in n), "FGA frozen!"
+        elif model_args.fga:
             model.fga = True
-            num_of_patches = patches_height * patches_width + 1
             sizes = [None] 
             sizes.extend([576 for _ in range(num_of_patches)])
             text_dimension = model.config.hidden_size
@@ -1061,7 +1067,7 @@ def train(attn_implementation=None):
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
             assert any(p.requires_grad for n,p in model.named_parameters()
-                if 'atten' in n), "Custom adapter frozen!"
+                if 'atten' in n), "FGA frozen!"
         
     print_trainable_summary(model)
     assert all(not p.requires_grad for n, p in model.named_parameters()
