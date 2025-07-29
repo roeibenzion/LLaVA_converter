@@ -24,10 +24,10 @@ from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, D
 import mm_utils
 
 
-def load_fga(model, path_to_weights = None, num_patches=5, compute_dtype=torch.bfloat16):
+def load_fga(model, path_to_weights = None, num_patches=5, num_of_clip_patches = 576, compute_dtype=torch.bfloat16):
     num_of_patches = num_of_patches # TODO: make this dynamic
     sizes = [None] 
-    sizes.extend([576 for _ in range(num_of_patches)])
+    sizes.extend([num_of_clip_patches for _ in range(num_of_patches)])
     text_dimension = model.config.hidden_size
     vision_dimension = model.vision_tower.config.hidden_size
     util_e = [text_dimension] + [vision_dimension for _ in range(num_of_patches)]

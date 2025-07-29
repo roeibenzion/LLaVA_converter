@@ -130,6 +130,7 @@ class ModelArguments:
     fga: bool = field(default=False)
     num_patches_height: Optional[int] = field(default=2)
     num_patches_width: Optional[int] = field(default=2)
+    fga_pretrained: Optional[str] = field(default=None)
 
 
 @dataclass
@@ -1042,10 +1043,10 @@ def train(attn_implementation=None):
         grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
         num_of_patches = patches_height * patches_width + 1
-        if model_args.pretrained_fga:
+        if model_args.fga_pretrained:
                 model.fga = True
                 from model.builder import load_fga_from_pretrained
-                load_fga_from_pretrained(model, model_args.pretrained_fga, training_args.device, num_of_patches=num_of_patches, compute_dtype=compute_dtype)
+                load_fga_from_pretrained(model, model_args.pretrained_fga, training_args.device, num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
                 assert any(p.requires_grad for n,p in model.named_parameters()
                 if 'atten' in n), "FGA frozen!"
         elif model_args.fga:

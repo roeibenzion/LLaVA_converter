@@ -15,7 +15,11 @@ deepspeed llava/train/train_mem.py \
     --mm_use_im_patch_token False \
     --image_aspect_ratio pad \
     --group_by_modality_length True \
+    --mm_patch_merge_type spatial \
+    --image_aspect_ratio "anyres" \
+    --image_grid_pinpoints  "(6x6)" \
     --bf16 True \
+    --fga_pretrained ./checkpoints/llava-v1.5-7b-pretrain/mm_projector.bin \
     --output_dir ./checkpoints/llava-v1.5-7b-lora \
     --num_train_epochs 1 \
     --per_device_train_batch_size 80 \

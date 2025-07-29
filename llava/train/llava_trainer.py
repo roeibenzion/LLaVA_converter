@@ -460,9 +460,23 @@ class LLaVATrainer(Trainer):
             super()._save_checkpoint(model, trial, metrics)
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        output_dir = output_dir or self.args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+
         if getattr(self.args, 'tune_mm_mlp_adapter', False):
-            pass
+            # Save adapter weights only
+            keys_to_match = ['mm_projector', 'vision_resampler', 'atten']
+            if getattr(self.args, "use_im_start_end", False):
+                keys_to_match.extend(['embed_tokens', 'embed_in'])
+
+            weight_to_save = get_mm_adapter_state_maybe_zero_3(self.model.named_parameters(), keys_to_match)
+
+            if self.args.local_rank in [0, -1]:
+                config = _sanitize_config(self.model.config)
+                config.save_pretrained(output_dir)
+                torch.save(weight_to_save, os.path.join(output_dir, "mm_projector.bin"))
         else:
+            # Default save for non-adapter mode
             super(LLaVATrainer, self)._save(output_dir, state_dict)
 
 def _sanitize_config(config):

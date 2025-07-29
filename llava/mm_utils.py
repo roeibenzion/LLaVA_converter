@@ -329,26 +329,35 @@ class KeywordsStoppingCriteria(StoppingCriteria):
         return all(outputs)
 
 
-    def separate_weights_from_bin(weight_path, module_prefix):
+
+    def separate_weights_from_bin(weight_path, module_name):
         """
-        Extracts weights for a specific submodule from a full model state_dict.
+        Extracts weights for a specific submodule (e.g., 'atten', 'mm_projector') from a full model state_dict.
 
         Args:
             weight_path (str): Path to the .bin file containing the full state_dict.
-            module_prefix (str): The prefix (e.g., 'encoder', 'backbone') of the submodule to extract.
+            module_name (str): The submodule name to extract (e.g., 'atten', 'mm_projector').
 
         Returns:
             OrderedDict: A state_dict that can be loaded into the submodule.
         """
         from collections import OrderedDict
-        full_state_dict = torch.load(weight_path, map_location='cpu')  # Safe loading
-
+        full_state_dict = torch.load(weight_path, map_location='cpu')
         filtered_state_dict = OrderedDict()
-        prefix = module_prefix + "."
 
         for k, v in full_state_dict.items():
-            if k.startswith(prefix):
-                new_key = k[len(prefix):]  # Remove the prefix
-                filtered_state_dict[new_key] = v
+            parts = k.split('.')
+
+            # Match if any dotted segment in the key path equals the module_name
+            # and ensure it's an actual module segment, not just substring
+            if module_name in parts:
+                idx = parts.index(module_name)
+                prefix = '.'.join(parts[:idx + 1])  # e.g., 'module.mm_projector'
+
+                if '.'.join(parts[:idx + 1]) == f'module.{module_name}' or \
+                '.'.join(parts[:idx + 2]) == f'module.model.{module_name}':
+                    new_key = '.'.join(parts[idx + 1:])
+                    filtered_state_dict[new_key] = v
 
         return filtered_state_dict
+
