@@ -10,6 +10,37 @@ from llava.constants import IMAGE_TOKEN_INDEX
 import re
 
 
+def separate_weights_from_bin(weight_path, module_name):
+    """
+    Extracts weights for a specific submodule (e.g., 'atten', 'mm_projector') from a full model state_dict.
+
+    Args:
+        weight_path (str): Path to the .bin file containing the full state_dict.
+        module_name (str): The submodule name to extract (e.g., 'atten', 'mm_projector').
+
+    Returns:
+        OrderedDict: A state_dict that can be loaded into the submodule.
+    """
+    from collections import OrderedDict
+    full_state_dict = torch.load(weight_path, map_location='cpu')
+    filtered_state_dict = OrderedDict()
+
+    for k, v in full_state_dict.items():
+        parts = k.split('.')
+
+        # Match if any dotted segment in the key path equals the module_name
+        # and ensure it's an actual module segment, not just substring
+        if module_name in parts:
+            idx = parts.index(module_name)
+            prefix = '.'.join(parts[:idx + 1])  # e.g., 'module.mm_projector'
+
+            if '.'.join(parts[:idx + 1]) == f'module.{module_name}' or \
+            '.'.join(parts[:idx + 2]) == f'module.model.{module_name}':
+                new_key = '.'.join(parts[idx + 1:])
+                filtered_state_dict[new_key] = v
+
+    return filtered_state_dict
+
 def select_best_resolution(original_size, possible_resolutions):
     """
     Selects the best resolution from a list of possible resolutions based on the original size.
@@ -330,34 +361,4 @@ class KeywordsStoppingCriteria(StoppingCriteria):
 
 
 
-    def separate_weights_from_bin(weight_path, module_name):
-        """
-        Extracts weights for a specific submodule (e.g., 'atten', 'mm_projector') from a full model state_dict.
-
-        Args:
-            weight_path (str): Path to the .bin file containing the full state_dict.
-            module_name (str): The submodule name to extract (e.g., 'atten', 'mm_projector').
-
-        Returns:
-            OrderedDict: A state_dict that can be loaded into the submodule.
-        """
-        from collections import OrderedDict
-        full_state_dict = torch.load(weight_path, map_location='cpu')
-        filtered_state_dict = OrderedDict()
-
-        for k, v in full_state_dict.items():
-            parts = k.split('.')
-
-            # Match if any dotted segment in the key path equals the module_name
-            # and ensure it's an actual module segment, not just substring
-            if module_name in parts:
-                idx = parts.index(module_name)
-                prefix = '.'.join(parts[:idx + 1])  # e.g., 'module.mm_projector'
-
-                if '.'.join(parts[:idx + 1]) == f'module.{module_name}' or \
-                '.'.join(parts[:idx + 2]) == f'module.model.{module_name}':
-                    new_key = '.'.join(parts[idx + 1:])
-                    filtered_state_dict[new_key] = v
-
-        return filtered_state_dict
 
