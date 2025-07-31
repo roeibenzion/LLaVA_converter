@@ -29,28 +29,41 @@ from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH
 from llava.mm_utils import get_anyres_image_grid_shape
 import utils
 
+import torch
+
+def _unwrap_state_dict(d):
+    """
+    Descend through common checkpoint wrappers ('model', 'state_dict', 'module')
+    until we reach the actual {param_name: tensor} state-dict.
+    """
+    while isinstance(d, dict) and not all(isinstance(v, torch.Tensor) for v in d.values()):
+        # Prefer the usual wrapper-keys if they exist
+        for key in ('model', 'state_dict', 'module'):
+            if key in d and isinstance(d[key], dict):
+                d = d[key]
+                break
+        else:
+            # No recognised wrapper key – stop to avoid infinite loop
+            break
+    return d
+
+
 def get_w(weights, keyword):
     """
-    Extract submodule weights using keyword. Robust to both full and already-trimmed keys.
-    
-    Args:
-        weights (dict): A state dict (possibly full or already trimmed).
-        keyword (str): Keyword to extract (e.g., 'mm_projector').
-    
-    Returns:
-        dict: Filtered state dict with cleaned keys.
+    Extract sub-module weights robustly, whether the checkpoint is wrapped
+    or the keys are already stripped.
     """
+    weights = _unwrap_state_dict(weights)
+
     out = {}
     for k, v in weights.items():
-        if keyword in k:
-            # Full key: e.g. module.model.mm_projector.0.weight
-            parts = k.split(keyword + '.')
-            if len(parts) > 1:
-                out[parts[1]] = v
-        elif k.split('.')[0].isdigit():
-            # Already trimmed: e.g. 0.weight, 2.bias
+        if f'{keyword}.' in k:              # full key
+            out[k.split(f'{keyword}.', 1)[1]] = v
+        elif k.split('.')[0].isdigit():    # already '0.weight' form
             out[k] = v
     return out
+
+
 
 
 class CrossAttentionLayer(nn.Module):
@@ -185,7 +198,11 @@ class LlavaMetaModel:
             # def get_w(weights, keyword):
             #     return {k.split(keyword + '.')[1]: v for k, v in weights.items() if keyword in k}
 
-            self.mm_projector.load_state_dict(get_w(mm_projector_weights, 'mm_projector'))
+            # self.mm_projector.load_state_dict(get_w(mm_projector_weights, 'mm_projector'))
+            clean_sd = get_w(mm_projector_weights, 'mm_projector')
+            print("mm_projector params found:", list(clean_sd.keys()))  # -- optional sanity check
+
+            self.mm_projector.load_state_dict(clean_sd)  # strict=True is fine now
 
 
 def unpad_image(tensor, original_size):
