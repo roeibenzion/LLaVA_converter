@@ -1043,13 +1043,7 @@ def train(attn_implementation=None):
         grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
         num_of_patches = patches_height * patches_width + 1
-        # if model_args.fga_pretrained:
-        #         model.fga = True
-        #         from model.builder import load_fga
-        #         load_fga(model, model_args.fga_pretrained,  num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
-        #         assert any(p.requires_grad for n,p in model.named_parameters()
-        #         if 'atten' in n), "FGA frozen!"
-        if model_args.fga or model_args.fga_pretrained:
+        if model_args.fga:
             model.fga = True
             sizes = [None] 
             sizes.extend([576 for _ in range(num_of_patches)])

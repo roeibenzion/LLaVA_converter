@@ -23,32 +23,6 @@ from llava.model import *
 from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 import mm_utils
 
-
-def load_fga(model, path_to_weights = None, num_of_patches=5, num_of_clip_patches = 576, compute_dtype=torch.bfloat16):
-    num_of_patches = num_of_patches # TODO: make this dynamic
-    sizes = [None] 
-    sizes.extend([num_of_clip_patches for _ in range(num_of_patches)])
-    text_dimension = model.config.hidden_size
-    vision_dimension = model.vision_tower.config.hidden_size
-    util_e = [text_dimension] + [vision_dimension for _ in range(num_of_patches)]
-    sharing_factor = {}
-
-    # First image patch - full images.
-    sharing_factor[1] = (1, [0])
-    # Following patches - image patches. Similar modalities. 
-    similar_modalities = [[i for i in range(2, num_of_patches + 1)]]
-    sharing_factor[2] = (1, [0])
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=device)
-    if path_to_weights is not None:
-        if os.path.exists(path_to_weights):
-            print(f"Loading FGA weights from {path_to_weights}")
-            weights = mm_utils.separate_weights_from_bin(path_to_weights, 'atten')
-            fga.load_state_dict(weights, strict=False)
-            print("FGA weights loaded successfully.")
-        else:
-            raise FileNotFoundError(f"FGA weights file not found at {path_to_weights}")
-
 def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, fga = False, device_map="auto", device="cuda", use_flash_attn=False, **kwargs):
     kwargs = {"device_map": device_map, **kwargs}
 

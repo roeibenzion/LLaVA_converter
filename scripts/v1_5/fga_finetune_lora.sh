@@ -20,6 +20,7 @@ deepspeed llava/train/train_mem.py \
     --image_grid_pinpoints  "(6x6)" \
     --bf16 True \
     --fga_pretrained ./checkpoints/llava-v1.5-7b-pretrain/mm_projector.bin \
+    --fga True \
     --output_dir ./checkpoints/llava-v1.5-7b-lora \
     --num_train_epochs 1 \
     --per_device_train_batch_size 80 \
