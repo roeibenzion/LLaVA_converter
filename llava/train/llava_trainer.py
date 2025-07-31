@@ -310,7 +310,7 @@ class LLaVATrainer(Trainer):
         if self.optimizer is None:
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
-            if hasattr(opt_model, "fga") and not hasattr(opt_model, "fga_pretrained"):
+            if hasattr(opt_model, "fga") and not (hasattr(opt_model, "fga_pretrained") and opt_model.fga_pretrained):
                 print("FGA enabled, using mm_projector and atten parameters for optimizer")
                 # pretrain of fga.
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
@@ -348,7 +348,7 @@ class LLaVATrainer(Trainer):
                     }
                 ]
             if self.args.mm_projector_lr is not None:
-                if hasattr(opt_model, "fga") or not opt_model.fga:
+                if hasattr(opt_model, "fga"):
                     projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                     atten_parameters = [name for name, _ in opt_model.named_parameters() if "atten" in name]
                     optimizer_grouped_parameters = [
@@ -397,6 +397,7 @@ class LLaVATrainer(Trainer):
                 else:
                     projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                     optimizer_grouped_parameters = [
+
                         {
                             "params": [
                                 p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and p.requires_grad)
