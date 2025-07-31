@@ -1045,8 +1045,8 @@ def train(attn_implementation=None):
         num_of_patches = patches_height * patches_width + 1
         if model_args.fga_pretrained:
                 model.fga = True
-                from model.builder import load_fga_from_pretrained
-                load_fga_from_pretrained(model, model_args.pretrained_fga, training_args.device, num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
+                from model.builder import load_fga
+                load_fga(model, model_args.pretrained_fga, training_args.device, num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
                 assert any(p.requires_grad for n,p in model.named_parameters()
                 if 'atten' in n), "FGA frozen!"
         elif model_args.fga:
