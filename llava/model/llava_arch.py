@@ -31,35 +31,39 @@ import utils
 
 import torch
 
+import torch
+from collections import OrderedDict
+
+
 def _unwrap_state_dict(d):
     """
-    Descend through common checkpoint wrappers ('model', 'state_dict', 'module')
-    until we reach the actual {param_name: tensor} state-dict.
+    Keep descending through common wrapper keys ('model', 'state_dict', 'module')
+    until every value is a Tensor.  Returns the innermost state-dict.
     """
     while isinstance(d, dict) and not all(isinstance(v, torch.Tensor) for v in d.values()):
-        # Prefer the usual wrapper-keys if they exist
         for key in ('model', 'state_dict', 'module'):
             if key in d and isinstance(d[key], dict):
                 d = d[key]
                 break
-        else:
-            # No recognised wrapper key – stop to avoid infinite loop
+        else:          # no recognised wrapper key
             break
     return d
 
 
 def get_w(weights, keyword):
     """
-    Extract sub-module weights robustly, whether the checkpoint is wrapped
-    or the keys are already stripped.
+    Original logic, but after auto-unwrapping the checkpoint.
+    Works when keys are either
+        - full ('module.model.mm_projector.0.weight'), or
+        - already stripped ('0.weight').
     """
-    weights = _unwrap_state_dict(weights)
+    weights = _unwrap_state_dict(weights)          # NEW line 👈
 
     out = {}
     for k, v in weights.items():
-        if f'{keyword}.' in k:              # full key
+        if f'{keyword}.' in k:                     # full key
             out[k.split(f'{keyword}.', 1)[1]] = v
-        elif k.split('.')[0].isdigit():    # already '0.weight' form
+        elif k.split('.')[0].isdigit():            # already '0.weight'
             out[k] = v
     return out
 
