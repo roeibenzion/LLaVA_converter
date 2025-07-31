@@ -311,6 +311,7 @@ class LLaVATrainer(Trainer):
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
             if hasattr(opt_model, "fga") and not hasattr(opt_model, "fga_pretrained"):
+                print("FGA enabled, using mm_projector and atten parameters for optimizer")
                 # pretrain of fga.
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 atten_parameters = [name for name, _ in opt_model.named_parameters() if "atten" in name]
