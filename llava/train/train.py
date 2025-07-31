@@ -1043,13 +1043,13 @@ def train(attn_implementation=None):
         grid_pinpoints = [[full_width, full_height]]  # i.e., [[1344, 1344]]
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
         num_of_patches = patches_height * patches_width + 1
-        if model_args.fga_pretrained:
-                model.fga = True
-                from model.builder import load_fga
-                load_fga(model, model_args.fga_pretrained,  num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
-                assert any(p.requires_grad for n,p in model.named_parameters()
-                if 'atten' in n), "FGA frozen!"
-        elif model_args.fga:
+        # if model_args.fga_pretrained:
+        #         model.fga = True
+        #         from model.builder import load_fga
+        #         load_fga(model, model_args.fga_pretrained,  num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
+        #         assert any(p.requires_grad for n,p in model.named_parameters()
+        #         if 'atten' in n), "FGA frozen!"
+        if model_args.fga or model_args.fga_pretrained:
             model.fga = True
             sizes = [None] 
             sizes.extend([576 for _ in range(num_of_patches)])
@@ -1065,6 +1065,25 @@ def train(attn_implementation=None):
             sharing_factor[2] = (1, [0])
 
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
+            if model_args.fga_pretrained:
+                # 1. Pull just the `fga.*` tensors out of the .bin (or dict)
+                fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "fga")
+
+                # 2. Cast to the same dtype you’re using for training / inference
+                fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
+
+                # 3. Load them into the freshly-created FGA module
+                missing, unexpected = fga.load_state_dict(fga_sd, strict=False)
+
+                # 4. (Optional) print a quick summary so you notice any mismatches
+                if training_args.local_rank in (-1, 0):  # log once on rank-0
+                    logging.info(
+                        "Loaded %d FGA tensors from %s. "
+                        "Missing: %s | Unexpected: %s",
+                        len(fga_sd), model_args.fga_pretrained,
+                        missing or "none",
+                        unexpected or "none")
+            model.fga = fga
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
             assert any(p.requires_grad for n,p in model.named_parameters()
