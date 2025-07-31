@@ -29,6 +29,30 @@ from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH
 from llava.mm_utils import get_anyres_image_grid_shape
 import utils
 
+def get_w(weights, keyword):
+    """
+    Extract submodule weights using keyword. Robust to both full and already-trimmed keys.
+    
+    Args:
+        weights (dict): A state dict (possibly full or already trimmed).
+        keyword (str): Keyword to extract (e.g., 'mm_projector').
+    
+    Returns:
+        dict: Filtered state dict with cleaned keys.
+    """
+    out = {}
+    for k, v in weights.items():
+        if keyword in k:
+            # Full key: e.g. module.model.mm_projector.0.weight
+            parts = k.split(keyword + '.')
+            if len(parts) > 1:
+                out[parts[1]] = v
+        elif k.split('.')[0].isdigit():
+            # Already trimmed: e.g. 0.weight, 2.bias
+            out[k] = v
+    return out
+
+
 class CrossAttentionLayer(nn.Module):
     def __init__(self, llm_hidden_size, image_hidden_size, num_heads, dropout=0.1):
         super(CrossAttentionLayer, self).__init__()
@@ -158,8 +182,8 @@ class LlavaMetaModel:
             if model_args.fga_pretrained:
                 import mm_utils
                 mm_projector_weights = mm_utils.separate_weights_from_bin(mm_projector_weights, 'mm_projector')
-            def get_w(weights, keyword):
-                return {k.split(keyword + '.')[1]: v for k, v in weights.items() if keyword in k}
+            # def get_w(weights, keyword):
+            #     return {k.split(keyword + '.')[1]: v for k, v in weights.items() if keyword in k}
 
             self.mm_projector.load_state_dict(get_w(mm_projector_weights, 'mm_projector'))
 
