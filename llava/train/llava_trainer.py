@@ -403,10 +403,10 @@ class LLaVATrainer(Trainer):
 
             self.log_optimizer_parameters(opt_model, optimizer_grouped_parameters)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
-            for module in opt_model.modules():
-                # if it requires grad, it should be in the optimizer
-                if hasattr(module, "weight") and module.weight.requires_grad:
-                    print(module)
+            # for module in opt_model.modules():
+            #     # if it requires grad, it should be in the optimizer
+            #     if hasattr(module, "weight") and module.weight.requires_grad:
+            #         print(module)
             if optimizer_cls.__name__ == "Adam8bit":
                 import bitsandbytes
 
