@@ -13,6 +13,30 @@ import re
 import torch
 from collections import OrderedDict
 
+def extract_mm_projector_weights(weights, keyword='mm_projector'):
+    """
+    Robustly extract mm_projector weights, whether full or already filtered.
+    
+    Args:
+        weights (dict): State dict (possibly full or filtered).
+        keyword (str): Module keyword to filter by.
+    
+    Returns:
+        dict: Cleaned state dict ready to load.
+    """
+    sample_keys = list(weights.keys())
+
+    # Case 1: already filtered, e.g., '0.weight'
+    if all(k.split('.')[0].isdigit() for k in sample_keys):
+        return weights
+
+    # Case 2: needs filtering
+    return {
+        k.split(keyword + '.')[1]: v
+        for k, v in weights.items()
+        if keyword + '.' in k
+    }
+
 def separate_weights_from_bin(weight_data, module_name):
     """
     Extracts weights for a specific submodule from a full model state_dict.
