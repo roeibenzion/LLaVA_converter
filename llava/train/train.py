@@ -1046,7 +1046,7 @@ def train(attn_implementation=None):
         if model_args.fga_pretrained:
                 model.fga = True
                 from model.builder import load_fga
-                load_fga(model, model_args.fga_pretrained, training_args.device, num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
+                load_fga(model, model_args.fga_pretrained,  num_of_patches=num_of_patches, num_of_clip_patches=576, compute_dtype=compute_dtype)
                 assert any(p.requires_grad for n,p in model.named_parameters()
                 if 'atten' in n), "FGA frozen!"
         elif model_args.fga:
