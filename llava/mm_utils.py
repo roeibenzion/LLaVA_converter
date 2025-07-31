@@ -37,36 +37,63 @@ def extract_mm_projector_weights(weights, keyword='mm_projector'):
         if keyword + '.' in k
     }
 
+import torch
+from collections import OrderedDict
+
+def _unwrap_state_dict(sd):
+    """
+    Descend through typical wrapper keys until all values are tensors.
+    """
+    while isinstance(sd, dict) and not all(isinstance(v, torch.Tensor) for v in sd.values()):
+        for key in ('state_dict', 'model', 'module'):
+            if key in sd and isinstance(sd[key], dict):
+                sd = sd[key]
+                break
+        else:
+            break
+    return sd
+
+
 def separate_weights_from_bin(weight_data, module_name):
     """
-    Extracts weights for a specific submodule from a full model state_dict.
-    
+    Extract weights for one sub-module (e.g. 'mm_projector', 'atten') from a
+    checkpoint *robustly*.
+
     Args:
-        weight_data (str or dict): Path to the .bin file or a state_dict.
-        module_name (str): The submodule name to extract.
-        
+        weight_data (str | dict): filepath to .bin or an already-loaded dict
+        module_name (str)       : segment name of the sub-module to extract
+
     Returns:
-        OrderedDict: A state_dict for the submodule.
+        OrderedDict: {clean_key: tensor} suitable for load_state_dict()
     """
-    # If it's a string, assume it's a path and load the state dict
+    # 1. Load (if necessary) and unwrap
     if isinstance(weight_data, str):
-        full_state_dict = torch.load(weight_data, map_location='cpu')
+        full_sd = torch.load(weight_data, map_location='cpu')
     elif isinstance(weight_data, dict):
-        full_state_dict = weight_data
+        full_sd = weight_data
     else:
-        raise TypeError("Expected a filepath or a state_dict dict")
+        raise TypeError("weight_data must be a filepath or a state-dict")
 
-    filtered_state_dict = OrderedDict()
-    for k, v in full_state_dict.items():
+    full_sd = _unwrap_state_dict(full_sd)
+
+    # 2. Collect exact-segment matches
+    filtered = OrderedDict()
+    for k, v in full_sd.items():
         parts = k.split('.')
-        if module_name in parts:
-            idx = parts.index(module_name)
-            if '.'.join(parts[:idx + 1]) == f'module.{module_name}' or \
-               '.'.join(parts[:idx + 2]) == f'module.model.{module_name}':
-                new_key = '.'.join(parts[idx + 1:])
-                filtered_state_dict[new_key] = v
+        try:
+            idx = parts.index(module_name)          # exact match only
+        except ValueError:
+            continue                                # module_name not in this key
 
-    return filtered_state_dict
+        # If module_name is the last segment, there is nothing to load
+        if idx == len(parts) - 1:
+            continue
+
+        new_key = '.'.join(parts[idx + 1:])         # strip the prefix
+        filtered[new_key] = v
+
+    return filtered
+
 
 
 def select_best_resolution(original_size, possible_resolutions):
