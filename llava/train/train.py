@@ -1069,7 +1069,7 @@ def train(attn_implementation=None):
                 # 3. Load them into the freshly-created FGA module
                 missing, unexpected = fga.load_state_dict(fga_sd, strict=False)
 
-                # 4. (Optional) print a quick summary so you notice any mismatches
+                # 4. (Optional) print a quick summary so you notice any mismatche
                 if training_args.local_rank in (-1, 0):  # log once on rank-0
                     logging.info(
                         "Loaded %d FGA tensors from %s. "
@@ -1077,6 +1077,7 @@ def train(attn_implementation=None):
                         len(fga_sd), model_args.fga_pretrained,
                         missing or "none",
                         unexpected or "none")
+                model.fga_pretrained = True
             model.fga = fga
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
