@@ -9,7 +9,6 @@ from transformers import StoppingCriteria
 from llava.constants import IMAGE_TOKEN_INDEX
 import re
 
-
 import torch
 from collections import OrderedDict
 
@@ -54,7 +53,7 @@ def _unwrap_state_dict(sd):
     return sd
 
 
-def separate_weights_from_bin(weight_data, module_name):
+def separate_weights_from_bin(weight_data, module_name, verbose=False):
     """
     Extract weights for one sub-module (e.g. 'mm_projector', 'atten') from a
     checkpoint *robustly*.
@@ -62,6 +61,7 @@ def separate_weights_from_bin(weight_data, module_name):
     Args:
         weight_data (str | dict): filepath to .bin or an already-loaded dict
         module_name (str)       : segment name of the sub-module to extract
+        verbose (bool)          : if True, prints all matched keys
 
     Returns:
         OrderedDict: {clean_key: tensor} suitable for load_state_dict()
@@ -78,6 +78,8 @@ def separate_weights_from_bin(weight_data, module_name):
 
     # 2. Collect exact-segment matches
     filtered = OrderedDict()
+    matched_keys = []
+
     for k, v in full_sd.items():
         parts = k.split('.')
         try:
@@ -91,8 +93,16 @@ def separate_weights_from_bin(weight_data, module_name):
 
         new_key = '.'.join(parts[idx + 1:])         # strip the prefix
         filtered[new_key] = v
+        matched_keys.append(k)
+
+    if verbose:
+        print(f"\n[separate_weights_from_bin] Matched keys for module '{module_name}':")
+        for key in matched_keys:
+            print(f"  - {key}")
+        print(f"Total matched: {len(matched_keys)}\n")
 
     return filtered
+
 
 
 
