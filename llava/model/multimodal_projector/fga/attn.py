@@ -48,7 +48,8 @@ class Pairwise(nn.Module):
         self.embed_X = nn.Conv1d(embed_x_size, self.embed_size, 1)
         self.embed_Y = nn.Conv1d(embed_y_size, self.embed_size, 1)
         if x_spatial_dim is not None:
-            self.normalize_S = nn.BatchNorm1d(self.x_spatial_dim * self.y_spatial_dim, track_running_stats=False)
+            print(f"This is batch norm with {x_spatial_dim} x {self.y_spatial_dim} spatial dimensions")
+            self.normalize_S = nn.BatchNorm1d(self.x_spatial_dim * self.y_spatial_dim)
 
             self.margin_X = nn.Conv1d(self.y_spatial_dim, 1, 1)
             self.margin_Y = nn.Conv1d(self.x_spatial_dim, 1, 1)
@@ -144,7 +145,9 @@ class Atten(nn.Module):
                 in combinations_with_replacement(enumerate(util_e), 2):
             # self
             if self.self_flag and idx1 == idx2 and idx1 not in self.skip_modalities:
+                print(f"creating self attention for {idx1} with embedding size {e_dim_1}")
                 self.pp_models[str(idx1)] = Pairwise(e_dim_1, sizes[idx1])
+                print(f'here is what was created: {self.pp_models[str(idx1)]}')
             else:
                 if pairwise_flag:
                     if any(idx1 in group for group in self.similar_modalities) and idx1 not in self.similar_modalities_reps.keys():
