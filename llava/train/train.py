@@ -1044,7 +1044,6 @@ def train(attn_implementation=None):
         model.config.image_grid_pinpoints = data_args.image_grid_pinpoints = grid_pinpoints
         num_of_patches = patches_height * patches_width + 1
         if model_args.fga:
-            model.fga = True
             sizes = [None] 
             sizes.extend([576 for _ in range(num_of_patches)])
             text_dimension = model.config.hidden_size
@@ -1059,9 +1058,10 @@ def train(attn_implementation=None):
             sharing_factor[2] = (1, [0])
 
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
+            model.fga = fga
             if model_args.fga_pretrained:
                 # 1. Pull just the `fga.*` tensors out of the .bin (or dict)
-                fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "fga", model=model, verbose=True)
+                fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "atten", model=model, verbose=True)
 
                 # 2. Cast to the same dtype you’re using for training / inference
                 fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
@@ -1079,7 +1079,7 @@ def train(attn_implementation=None):
                         missing or "none",
                         unexpected or "none")
                 model.fga_pretrained = True
-            model.fga = fga
+
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
             assert any(p.requires_grad for n,p in model.named_parameters()
