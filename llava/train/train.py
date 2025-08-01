@@ -1061,7 +1061,7 @@ def train(attn_implementation=None):
             model.fga = fga
             if model_args.fga_pretrained:
                 # 1. Pull just the `fga.*` tensors out of the .bin (or dict)
-                fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "atten", model=model, verbose=True)
+                fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "atten")
 
                 # 2. Cast to the same dtype you’re using for training / inference
                 fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
