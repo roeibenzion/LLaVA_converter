@@ -93,7 +93,7 @@ def separate_weights_from_bin(weight_data, module_name):
         new_key = '.'.join(parts[idx + 1:])
         filtered[new_key] = v
         checkpoint_keys.add(new_key)
-
+    return filtered
 
 
 def select_best_resolution(original_size, possible_resolutions):
