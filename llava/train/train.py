@@ -1067,7 +1067,8 @@ def train(attn_implementation=None):
                 fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
 
                 # 3. Load them into the freshly-created FGA module
-                missing, unexpected = fga.load_state_dict(fga_sd, strict=False)
+                missing, unexpected = fga.load_state_dict(fga_sd, strict=True)
+                # Strict = true because we want to ensure that the FGA module is initialized with the correct keys and shapes.
 
                 # 4. (Optional) print a quick summary so you notice any mismatche
                 if training_args.local_rank in (-1, 0):  # log once on rank-0
