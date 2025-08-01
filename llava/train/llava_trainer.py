@@ -296,6 +296,7 @@ class LLaVATrainer(Trainer):
         print("\n==================================================\n")
 
     def create_optimizer(self):
+        # TODO: orginize this code better, this is a (working) mess :)
         """
         Setup the optimizer.
 
@@ -310,8 +311,89 @@ class LLaVATrainer(Trainer):
         if self.optimizer is None:
             decay_parameters = get_parameter_names(opt_model, ALL_LAYERNORM_LAYERS)
             decay_parameters = [name for name in decay_parameters if "bias" not in name]
+            if self.args.mm_projector_lr is not None:
+                if hasattr(opt_model, "fga") and (hasattr(opt_model, "fga_pretrained") and opt_model.fga_pretrained):
+                    # FGA finetune
+                    projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
+                    atten_parameters = [name for name, _ in opt_model.named_parameters() if "atten" in name]
+                    optimizer_grouped_parameters = [
+                        { # all atten parameters
+                        "params": [
+                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in atten_parameters and p.requires_grad)
+
+                        ],
+                        "weight_decay": self.args.weight_decay,
+                        "lr": self.args.mm_projector_lr * 2,
+                        },
+                        { # atten no weight decay
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in atten_parameters and p.requires_grad)
+                                ],
+                            "weight_decay": self.args.weight_decay,
+                            "lr": self.args.mm_projector_lr * 2,
+                        },
+                        {
+                            # LLM parameters
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and n not in atten_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": self.args.weight_decay,
+                        },
+                        {
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and n not in atten_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": 0.0,
+                        },
+                        {
+                            # projector parameters
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": self.args.weight_decay,
+                            "lr": self.args.mm_projector_lr,
+                        },
+                        {
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": 0.0,
+                            "lr": self.args.mm_projector_lr,
+                        },
+                    ]
+                else:
+                    # normal finetune
+                    projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
+                    optimizer_grouped_parameters = [
+
+                        {
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": self.args.weight_decay,
+                        },
+                        {
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": 0.0,
+                        },
+                        {
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": self.args.weight_decay,
+                            "lr": self.args.mm_projector_lr,
+                        },
+                        {
+                            "params": [
+                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
+                            ],
+                            "weight_decay": 0.0,
+                            "lr": self.args.mm_projector_lr,
+                        },
+                    ]
             if hasattr(opt_model, "fga") and not (hasattr(opt_model, "fga_pretrained") and opt_model.fga_pretrained):
-                print("FGA enabled, using mm_projector and atten parameters for optimizer")
                 # pretrain of fga.
                 projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
                 atten_parameters = [name for name, _ in opt_model.named_parameters() if "atten" in name]
@@ -347,85 +429,6 @@ class LLaVATrainer(Trainer):
                         "lr" : 5e-4,
                     }
                 ]
-            if self.args.mm_projector_lr is not None:
-                if hasattr(opt_model, "fga"):
-                    projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
-                    atten_parameters = [name for name, _ in opt_model.named_parameters() if "atten" in name]
-                    optimizer_grouped_parameters = [
-                        { # all atten parameters
-                        "params": [
-                            p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in atten_parameters and p.requires_grad)
-
-                        ],
-                        "weight_decay": self.args.weight_decay,
-                        "lr": self.args.mm_projector_lr * 2,
-                        },
-                        { # atten no weight decay
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in atten_parameters and p.requires_grad)
-                                ],
-                            "weight_decay": self.args.weight_decay,
-                            "lr": self.args.mm_projector_lr * 2,
-                        },
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": self.args.weight_decay,
-                        },
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": 0.0,
-                        },
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": self.args.weight_decay,
-                            "lr": self.args.mm_projector_lr,
-                        },
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": 0.0,
-                            "lr": self.args.mm_projector_lr,
-                        },
-                    ]
-                else:
-                    projector_parameters = [name for name, _ in opt_model.named_parameters() if "mm_projector" in name]
-                    optimizer_grouped_parameters = [
-
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n not in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": self.args.weight_decay,
-                        },
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n not in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": 0.0,
-                        },
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n in decay_parameters and n in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": self.args.weight_decay,
-                            "lr": self.args.mm_projector_lr,
-                        },
-                        {
-                            "params": [
-                                p for n, p in opt_model.named_parameters() if (n not in decay_parameters and n in projector_parameters and p.requires_grad)
-                            ],
-                            "weight_decay": 0.0,
-                            "lr": self.args.mm_projector_lr,
-                        },
-                    ]
-                
             else:
                 optimizer_grouped_parameters = [
                     {
