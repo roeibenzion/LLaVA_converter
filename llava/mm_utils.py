@@ -53,20 +53,23 @@ def _unwrap_state_dict(sd):
     return sd
 
 
-def separate_weights_from_bin(weight_data, module_name, verbose=False):
+from collections import OrderedDict
+import torch
+
+def separate_weights_from_bin(weight_data, module_name, model=None, verbose=False):
     """
-    Extract weights for one sub-module (e.g. 'mm_projector', 'atten') from a
-    checkpoint *robustly*.
+    Extract weights for a sub-module from a checkpoint and compare to model.
 
     Args:
-        weight_data (str | dict): filepath to .bin or an already-loaded dict
-        module_name (str)       : segment name of the sub-module to extract
-        verbose (bool)          : if True, prints all matched keys
+        weight_data (str | dict): Path to .bin or a loaded state dict
+        module_name (str)       : Name of submodule to extract (e.g. 'mm_projector')
+        model (torch.nn.Module) : Reference model to compare keys (optional)
+        verbose (bool)          : Print full key match diagnostics
 
     Returns:
         OrderedDict: {clean_key: tensor} suitable for load_state_dict()
     """
-    # 1. Load (if necessary) and unwrap
+    # Load checkpoint
     if isinstance(weight_data, str):
         full_sd = torch.load(weight_data, map_location='cpu')
     elif isinstance(weight_data, dict):
@@ -76,32 +79,60 @@ def separate_weights_from_bin(weight_data, module_name, verbose=False):
 
     full_sd = _unwrap_state_dict(full_sd)
 
-    # 2. Collect exact-segment matches
+    # Separate out weights for the requested submodule
     filtered = OrderedDict()
-    matched_keys = []
-
+    checkpoint_keys = set()
     for k, v in full_sd.items():
         parts = k.split('.')
         try:
-            idx = parts.index(module_name)          # exact match only
+            idx = parts.index(module_name)
         except ValueError:
-            continue                                # module_name not in this key
-
-        # If module_name is the last segment, there is nothing to load
+            continue
         if idx == len(parts) - 1:
             continue
-
-        new_key = '.'.join(parts[idx + 1:])         # strip the prefix
+        new_key = '.'.join(parts[idx + 1:])
         filtered[new_key] = v
-        matched_keys.append(k)
+        checkpoint_keys.add(new_key)
 
-    if verbose:
-        print(f"\n[separate_weights_from_bin] Matched keys for module '{module_name}':")
-        for key in matched_keys:
-            print(f"  - {key}")
-        print(f"Total matched: {len(matched_keys)}\n")
+    # If no model provided, skip diagnostics
+    if not verbose or model is None:
+        return filtered
+
+    print(f"\n[DEBUG] Diagnostic report for module: '{module_name}'")
+
+    # Get model submodule state dict keys
+    try:
+        model_submodule = dict(model.named_modules())[module_name]
+    except KeyError:
+        print(f"\n❌ Module '{module_name}' not found in model.")
+        return filtered
+
+    model_keys = set(model_submodule.state_dict().keys())
+
+    # Intersection
+    matched_keys = checkpoint_keys & model_keys
+
+    # Diagnostic sets
+    in_path_not_model = checkpoint_keys - model_keys
+    in_model_not_path = model_keys - checkpoint_keys
+
+    # Print results
+    print(f"\n✅ Matched keys ({len(matched_keys)}):")
+    for k in sorted(matched_keys):
+        print(f"  - {k}")
+
+    print(f"\n❌ In checkpoint but NOT in model ({len(in_path_not_model)}):")
+    for k in sorted(in_path_not_model):
+        print(f"  - {k}")
+
+    print(f"\n❌ In model but NOT in checkpoint ({len(in_model_not_path)}):")
+    for k in sorted(in_model_not_path):
+        print(f"  - {k}")
+
+    print(f"\nSummary: matched={len(matched_keys)}, missing_in_model={len(in_path_not_model)}, missing_in_path={len(in_model_not_path)}\n")
 
     return filtered
+
 
 
 
