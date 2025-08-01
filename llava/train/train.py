@@ -1067,7 +1067,40 @@ def train(attn_implementation=None):
                 fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
 
                 # 3. Load them into the freshly-created FGA module
-                missing, unexpected = fga.load_state_dict(fga_sd, strict=True)
+                # missing, unexpected = fga.load_state_dict(fga_sd, strict=True)
+                # Original model state dict
+                model_dict = fga.state_dict()
+
+                # Filter and keep only matching keys and shapes
+                compatible_state_dict = {}
+                loaded_keys = []
+                skipped_keys = []
+
+                for k, v in fga_sd.items():
+                    if k in model_dict:
+                        if v.shape == model_dict[k].shape:
+                            compatible_state_dict[k] = v
+                            loaded_keys.append(k)
+                        else:
+                            skipped_keys.append((k, v.shape, model_dict[k].shape))
+                    else:
+                        skipped_keys.append((k, v.shape, "key not in model"))
+
+                # Log what will be loaded
+                print(f"[INFO] Loading {len(loaded_keys)} matching parameters:")
+                for k in loaded_keys:
+                    print(f"  ✓ {k}")
+
+                # Log skipped mismatches
+                if skipped_keys:
+                    print(f"[WARNING] Skipping {len(skipped_keys)} parameters due to mismatch or missing:")
+                    for k, ckpt_shape, model_shape in skipped_keys:
+                        print(f"  ✗ {k}: checkpoint shape = {ckpt_shape}, model shape = {model_shape}")
+
+                # Update model weights
+                model_dict.update(compatible_state_dict)
+                fga.load_state_dict(model_dict)
+
                 # Strict = true because we want to ensure that the FGA module is initialized with the correct keys and shapes.
 
                 # 4. (Optional) print a quick summary so you notice any mismatche
