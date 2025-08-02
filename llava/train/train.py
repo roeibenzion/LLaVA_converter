@@ -1103,17 +1103,12 @@ def train(attn_implementation=None):
     
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
-
-
-    # DEBUG - print model dtypes:
-    if training_args.local_rank in (-1, 0):
-        print("Model parameter dtypes:")
+    
+    # WA
+    if training_args.bf16:
         for name, param in model.named_parameters():
-            if param.requires_grad:
-                print(f"{name}: {param.dtype}")
-        print("Model buffer dtypes:")
-        for name, buffer in model.named_buffers():
-            print(f"{name}: {buffer.dtype}")
+            if param.requires_grad and param.dtype != torch.bfloat16:
+                param.data = param.data.to(torch.bfloat16)
 
     
     from llava_trainer import GradAndDeltaMonitor
