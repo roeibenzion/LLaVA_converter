@@ -1060,25 +1060,22 @@ def train(attn_implementation=None):
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
             model.fga = fga
             if model_args.fga_pretrained:
-                # 1) Pull just the FGA tensors from your .bin (or dict)
-                #    (keeping your existing utility)
-                fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "atten")
+                if model_args.fga_pretrained:
+                    # Pull FGA tensors (your helper)
+                    fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "atten")
 
-                # 2) (Optional) If you *know* you want a uniform compute dtype, you can still cast here.
-                #    We'll actually re-cast per-parameter to the module's dtype/device during load,
-                #    which is safer if some buffers stay fp32 (e.g., running stats).
-                # fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
+                    # Load only matching keys/shapes, cast to target dtype
+                    tgt = fga.state_dict()
+                    ok = {k: v.to(dtype=tgt[k].dtype) for k, v in fga_sd.items()
+                        if k in tgt and v.shape == tgt[k].shape}
+                    info = fga.load_state_dict(ok, strict=False)
 
-                # 3) Safely load only compatible tensors; others are skipped and left at init
-                stats = mm_utils.load_state_dict_safely(
-                    fga,
-                    fga_sd,
-                    module_name="FGA",
-                    rank=training_args.local_rank,
-                    cast_to_target_dtype_device=True,
-                )
+                    if training_args.local_rank in (-1, 0):
+                        logging.info("Loaded %d/%d FGA tensors from %s. Missing: %s | Unexpected: %s",
+                                    len(ok), len(tgt), model_args.fga_pretrained,
+                                    info.missing_keys or "none", info.unexpected_keys or "none")
 
-                model.fga_pretrained = True
+                    model.fga_pretrained = len(ok) > 0
 
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]
             fga.show_attention_graph(names)
