@@ -1057,7 +1057,8 @@ def train(attn_implementation=None):
             similar_modalities = [[i for i in range(2, num_of_patches + 1)]]
             sharing_factor[2] = (1, [0])
 
-            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
+            # fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
+            fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(device=training_args.device)
             model.fga = fga
             if model_args.fga_pretrained:
                 # Pull FGA tensors (your helper)
