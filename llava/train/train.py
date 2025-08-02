@@ -1088,8 +1088,7 @@ def train(attn_implementation=None):
     
     model.tokenizer = tokenizer
 
-    # WA - make LoRA layers bf16 if the training is bf16
-    if training_args.bits in [4, 8] or training_args.lora_enable:
+    if training_args.bits in [4, 8]:
         from peft.tuners.lora import LoraLayer
         for name, module in model.named_modules():
             if isinstance(module, LoraLayer):
