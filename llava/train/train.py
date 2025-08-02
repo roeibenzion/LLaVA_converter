@@ -1088,7 +1088,8 @@ def train(attn_implementation=None):
     
     model.tokenizer = tokenizer
 
-    if training_args.bits in [4, 8]:
+    # WA - make LoRA layers bf16 if the training is bf16
+    if training_args.bits in [4, 8] or training_args.lora_enable:
         from peft.tuners.lora import LoraLayer
         for name, module in model.named_modules():
             if isinstance(module, LoraLayer):
@@ -1101,13 +1102,21 @@ def train(attn_implementation=None):
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
     
-    if training_args.bf16:
-        model = model.to(torch.bfloat16)
-
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args)
 
 
+    # DEBUG - print model dtypes:
+    if training_args.local_rank in (-1, 0):
+        print("Model parameter dtypes:")
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                print(f"{name}: {param.dtype}")
+        print("Model buffer dtypes:")
+        for name, buffer in model.named_buffers():
+            print(f"{name}: {buffer.dtype}")
+
+    
     from llava_trainer import GradAndDeltaMonitor
     trainer = LLaVATrainer(
         model=model,
