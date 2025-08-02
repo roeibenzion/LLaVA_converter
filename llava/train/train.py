@@ -1110,6 +1110,10 @@ def train(attn_implementation=None):
 
 
     from llava_trainer import GradAndDeltaMonitor
+        # Print model parameter names and dtypes
+    print("=== Model Parameter Data Types ===")
+    for name, param in model.named_parameters():
+        print(f"{name}: {param.dtype}")
 
     trainer = LLaVATrainer(
         model=model,
