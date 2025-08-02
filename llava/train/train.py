@@ -1107,9 +1107,19 @@ def train(attn_implementation=None):
 
     from llava_trainer import GradAndDeltaMonitor
         # Print model parameter names and dtypes
-    print("=== Model Parameter Data Types ===")
-    for name, param in model.named_parameters():
-        print(f"{name}: {param.dtype}")
+    # Get dtype from vision_tower
+    target_dtype = model.vision_tower.dtype
+
+    # Recursively convert all model parameters to the same dtype
+    for name, module in model.named_modules():
+        for param_name, param in module.named_parameters(recurse=False):
+            if param.dtype != target_dtype:
+                param.data = param.data.to(dtype=target_dtype)
+
+        # If buffers (e.g., for batch norm) exist, convert them too
+        for buffer_name, buffer in module.named_buffers(recurse=False):
+            if buffer.dtype != target_dtype:
+                buffer.data = buffer.data.to(dtype=target_dtype)
 
     trainer = LLaVATrainer(
         model=model,
