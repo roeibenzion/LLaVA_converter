@@ -1060,24 +1060,24 @@ def train(attn_implementation=None):
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(dtype=compute_dtype, device=training_args.device)
             model.fga = fga
             if model_args.fga_pretrained:
-                # 1. Pull just the `fga.*` tensors out of the .bin (or dict)
+                # 1) Pull just the FGA tensors from your .bin (or dict)
+                #    (keeping your existing utility)
                 fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "atten")
 
-                # 2. Cast to the same dtype you’re using for training / inference
-                fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
+                # 2) (Optional) If you *know* you want a uniform compute dtype, you can still cast here.
+                #    We'll actually re-cast per-parameter to the module's dtype/device during load,
+                #    which is safer if some buffers stay fp32 (e.g., running stats).
+                # fga_sd = {k: v.to(dtype=compute_dtype) for k, v in fga_sd.items()}
 
-                # 3. Load them into the freshly-created FGA module
-                missing, unexpected = fga.load_state_dict(fga_sd, strict=True)
-                # Strict = true because we want to ensure that the FGA module is initialized with the correct keys and shapes.
+                # 3) Safely load only compatible tensors; others are skipped and left at init
+                stats = mm_utils.load_state_dict_safely(
+                    fga,
+                    fga_sd,
+                    module_name="FGA",
+                    rank=training_args.local_rank,
+                    cast_to_target_dtype_device=True,
+                )
 
-                # 4. (Optional) print a quick summary so you notice any mismatche
-                if training_args.local_rank in (-1, 0):  # log once on rank-0
-                    logging.info(
-                        "Loaded %d FGA tensors from %s. "
-                        "Missing: %s | Unexpected: %s",
-                        len(fga_sd), model_args.fga_pretrained,
-                        missing or "none",
-                        unexpected or "none")
                 model.fga_pretrained = True
 
             names = ['Text'] + ['orig_image'] + [f'Patch_{i}' for i in range(1, num_of_patches)]

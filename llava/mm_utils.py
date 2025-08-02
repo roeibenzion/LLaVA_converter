@@ -12,6 +12,72 @@ import re
 import torch
 from collections import OrderedDict
 
+import logging
+import torch
+
+def load_state_dict_safely(module, raw_state_dict, *, module_name="module",
+                           rank=0, cast_to_target_dtype_device=True):
+    """
+    Load as many tensors as possible from `raw_state_dict` into `module`,
+    skipping keys that are missing or whose shapes don't match.
+    Returns a dict with load statistics for logging/debugging.
+
+    We cast each incoming tensor to the dtype/device of the target tensor to
+    avoid dtype/device mismatches. Anything not loaded keeps its existing
+    initialization and will train from scratch.
+    """
+    tgt_sd = module.state_dict()  # parameters + buffers, keyed relative to `module`
+    filtered_sd = {}
+    skipped_missing = []              # keys present in ckpt but not in module
+    skipped_shape_mismatch = []       # keys present in both but shape differs
+    loaded_keys = []
+
+    for k, v in raw_state_dict.items():
+        if k not in tgt_sd:
+            skipped_missing.append(k)
+            continue
+        tgt_tensor = tgt_sd[k]
+        if tgt_tensor.shape != v.shape:
+            skipped_shape_mismatch.append((k, tuple(v.shape), tuple(tgt_tensor.shape)))
+            continue
+
+        if cast_to_target_dtype_device:
+            # match both dtype and device of the target tensor
+            v = v.to(device=tgt_tensor.device, dtype=tgt_tensor.dtype, non_blocking=True)
+        filtered_sd[k] = v
+        loaded_keys.append(k)
+
+    # Load only the compatible subset; strict=False so any still-missing keys are fine.
+    missing_after, unexpected_after = module.load_state_dict(filtered_sd, strict=False)
+
+    stats = {
+        "provided": len(raw_state_dict),
+        "loaded": len(filtered_sd),
+        "total_params_in_module": len(tgt_sd),
+        "missing_after": list(missing_after),   # keys in module that we didn't load (will train from scratch)
+        "unexpected_after": list(unexpected_after),  # should be empty because we filtered
+        "skipped_missing_in_ckpt": skipped_missing,  # ckpt had extra keys (not in module)
+        "skipped_shape_mismatch": skipped_shape_mismatch,
+        "loaded_keys": loaded_keys,
+    }
+
+    if rank in (-1, 0):
+        logging.info("[%s] Provided: %d | Loaded: %d",
+                     module_name, stats["provided"], stats["loaded"])
+        if skipped_missing:
+            logging.info("[%s] Skipped unexpected keys (not in module): %s",
+                         module_name, skipped_missing)
+        if skipped_shape_mismatch:
+            logging.info("[%s] Skipped shape-mismatched keys: %s",
+                         module_name,
+                         [f"{k} (ckpt {s}->target {t})" for k, s, t in skipped_shape_mismatch])
+        if stats["missing_after"]:
+            logging.info("[%s] Missing keys in checkpoint "
+                         "(left at init; will train from scratch): %s",
+                         module_name, stats["missing_after"])
+
+    return stats
+
 def extract_mm_projector_weights(weights, keyword='mm_projector'):
     """
     Robustly extract mm_projector weights, whether full or already filtered.
