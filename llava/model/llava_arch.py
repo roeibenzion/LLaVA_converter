@@ -317,6 +317,7 @@ class LlavaMetaForCausalLM(ABC):
 
     def inputs_for_atten(self, input_ids, position_ids, attention_mask, past_key_values, labels,
         images):
+        # if images is > 3 dim. Else it is a single image, not patched.
         num_patches_per_image = [image.shape[0] for image in images]
         # Let's just add dummy tensors if they do not exist,
         # it is a headache to deal with None all the time.
