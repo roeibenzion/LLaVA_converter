@@ -304,14 +304,29 @@ class LlavaMetaForCausalLM(ABC):
         if type(images) is list or images.ndim == 5:
             if type(images) is list:
                 images = [x.unsqueeze(0) if x.ndim == 3 else x for x in images]
-            concat_images = torch.cat([image for image in images], dim=0)
+                split_sizes = [x.size(0) for x in images]          # local sizes
+                concat_images = torch.cat(images, dim=0)
+            else:
+                b, n1, c, w, h = images.shape
+                split_sizes = [n1] * b                              # local sizes
+                concat_images = images.reshape(b * n1, c, w, h)
             # (b*(n+1), c, w, h)
             image_features = self.encode_images_no_proj(concat_images)
             # (b*(n+1), 576, 1024)
         else:
             image_features = self.encode_images_no_proj(images)
+            split_sizes = (num_patches_per_image.tolist()
+                if torch.is_tensor(num_patches_per_image)
+                else list(num_patches_per_image))
         # (b*(n+1), 576, 1024)
-        image_features = torch.split(image_features, num_patches_per_image, dim=0)
+        if sum(split_sizes) != image_features.size(0):
+            raise RuntimeError(
+                f"split sizes sum to {sum(split_sizes)}, but features have {image_features.size(0)} rows. "
+                f"Got {type(num_patches_per_image)}."
+            )
+
+
+        image_features = torch.split(image_features, split_sizes, dim=0)
         # (b, n+1, 576, 1024)
         return image_features
 
@@ -355,6 +370,7 @@ class LlavaMetaForCausalLM(ABC):
         utils.dump_stats(image_features, "after_mm_projector")
         # (b*(n+1), 4096)
         split_sizes = [image.shape[0] for image in images]
+        split_sizes = torch.as_tensor(split_sizes, dtype=torch.long, device=images.device)
         image_features = torch.split(image_features, split_sizes, dim=0)
         # (b, n+1, 4096)
         # The idea of flatten is when you have (b, n, 576, 4096) and you need (b, k, 4096) you reduce dim by falttening and have k = n*576. We don't need it.
