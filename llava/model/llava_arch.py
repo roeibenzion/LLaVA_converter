@@ -311,7 +311,10 @@ class LlavaMetaForCausalLM(ABC):
         else:
             image_features = self.encode_images_no_proj(images)
         # (b*(n+1), 576, 1024)
-        image_features = torch.split(image_features, num_patches_per_image, dim=0)
+        # sizes as a tensor on the same device as your images so DataParallel can scatter it
+        sizes = torch.as_tensor(num_patches_per_image, dtype=torch.long, device=images.device)
+
+        image_features = torch.split(image_features, sizes, dim=0)
         # (b, n+1, 576, 1024)
         return image_features
 
@@ -354,6 +357,7 @@ class LlavaMetaForCausalLM(ABC):
         utils.dump_stats(image_features, "after_mm_projector")
         # (b*(n+1), 4096)
         split_sizes = [image.shape[0] for image in images]
+        split_sizes = torch.as_tensor(split_sizes, dtype=torch.long, device=images.device)
         image_features = torch.split(image_features, split_sizes, dim=0)
         # (b, n+1, 4096)
         # The idea of flatten is when you have (b, n, 576, 4096) and you need (b, k, 4096) you reduce dim by falttening and have k = n*576. We don't need it.
