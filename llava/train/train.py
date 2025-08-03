@@ -788,7 +788,9 @@ class LazySupervisedDataset(Dataset):
             processor = self.data_args.image_processor
             image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
             if self.data_args.image_aspect_ratio == 'anyres':
+                print(f'[DEBUG] Processing image {image_file} with anyres, before image shape: {image.size}')
                 image = mm_utils.process_anyres_image(image, self.data_args.image_processor, self.data_args.image_grid_pinpoints)
+                print(f'[DEBUG] Processing image {image_file} with anyres, after image shape: {image.size}')
             elif self.data_args.image_aspect_ratio == 'pad':
                 def expand2square(pil_img, background_color):
                     width, height = pil_img.size
