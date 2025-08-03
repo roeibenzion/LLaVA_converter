@@ -128,8 +128,6 @@ class ModelArguments:
     mm_vision_select_feature: Optional[str] = field(default="patch")
     mm_cross_attn: bool = field(default=False)
     fga: bool = field(default=False)
-    num_patches_height: Optional[int] = field(default=2)
-    num_patches_width: Optional[int] = field(default=2)
     fga_pretrained: Optional[str] = field(default=None)
 
 
@@ -144,6 +142,9 @@ class DataArguments:
     image_grid_pinpoints: Optional[str] = field(default=None)
     image_crop_resolution: Optional[int] = field(default=None)
     image_split_resolution: Optional[int] = field(default=None)
+    num_patches_height: Optional[int] = field(default=2)
+    num_patches_width: Optional[int] = field(default=2)
+    fga_wa : Optional[bool] = field(default=False, metadata={"help": "workaround for FGA - in the case of no image, use num_patches_height * num_patches_width patches + 1 for dummy image"})
 
 
 @dataclass
@@ -788,9 +789,7 @@ class LazySupervisedDataset(Dataset):
             processor = self.data_args.image_processor
             image = Image.open(os.path.join(image_folder, image_file)).convert('RGB')
             if self.data_args.image_aspect_ratio == 'anyres':
-                print(f'[DEBUG] Processing image {image_file} with anyres, before image shape: {image.size}')
                 image = mm_utils.process_anyres_image(image, self.data_args.image_processor, self.data_args.image_grid_pinpoints)
-                print(f'[DEBUG] Processing image {image_file} with anyres, after image shape: {image.size()}')
             elif self.data_args.image_aspect_ratio == 'pad':
                 def expand2square(pil_img, background_color):
                     width, height = pil_img.size
@@ -827,7 +826,12 @@ class LazySupervisedDataset(Dataset):
         elif self.data_args.is_multimodal:
             # image does not exist in the data, but the model is multimodal
             crop_size = self.data_args.image_processor.crop_size
-            data_dict['image'] = torch.zeros(3, crop_size['height'], crop_size['width'])
+            if self.data_args.fga_wa and self.data_args.image_aspect_ratio == 'anyres':
+                num_of_patches = self.data_args.num_patches_height * self.data_args.num_patches_width + 1
+                data_dict['image'] = torch.zeros(num_of_patches, 3, crop_size['height'], crop_size['width'])
+            else:
+                data_dict['image'] = torch.zeros(3, crop_size['height'], crop_size['width'])
+            
         return data_dict
 
 

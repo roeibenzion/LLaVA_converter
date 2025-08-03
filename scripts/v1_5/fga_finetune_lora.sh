@@ -15,6 +15,7 @@ deepspeed llava/train/train_mem.py \
     --mm_use_im_patch_token False \
     --image_aspect_ratio "anyres" \
     --image_grid_pinpoints  "(1x1),...,(6x6)" \
+    --fga_wa True \
     --bf16 True \
     --fga_pretrained ./checkpoints/llava-v1.5-7b-pretrain/mm_projector.bin \
     --fga True \
