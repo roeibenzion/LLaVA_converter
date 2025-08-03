@@ -827,11 +827,12 @@ class LazySupervisedDataset(Dataset):
             # image does not exist in the data, but the model is multimodal
             crop_size = self.data_args.image_processor.crop_size
             if self.data_args.fga_wa and self.data_args.image_aspect_ratio == 'anyres':
+                print("FGA workaround: using num_patches_height * num_patches_width patches + 1 for dummy image")
                 num_of_patches = self.data_args.num_patches_height * self.data_args.num_patches_width + 1
                 data_dict['image'] = torch.zeros(num_of_patches, 3, crop_size['height'], crop_size['width'])
             else:
                 data_dict['image'] = torch.zeros(3, crop_size['height'], crop_size['width'])
-            
+        print(f" [DEBUG] final shape of image: {data_dict['image'].shape}")
         return data_dict
 
 
