@@ -264,14 +264,13 @@ class LlavaMetaForCausalLM(ABC):
         return self.atten
     
 
-    def get_textual_tokens(self, input_ids, labels, max_len=50):
+    def get_textual_tokens(self, input_ids, labels, max_len=50, auto_max_len=False):
         '''
         provide max_len = None for no pad
+        Auto max len will take the longest sequence in the batch and use it as max_len.
+        TODO: make this API normal.
         '''
         H_q = []
-        new_input_embeds = []
-        new_labels = []
-        cur_image_idx = 0
         for batch_idx, cur_input_ids in enumerate(input_ids):
             num_images = (cur_input_ids == IMAGE_TOKEN_INDEX).sum()
             if num_images == 0:
@@ -290,6 +289,9 @@ class LlavaMetaForCausalLM(ABC):
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
             H_q.append(cur_input_embeds_no_im[-1])
+        
+        if auto_max_len:
+            max_len = max(x.shape[0] for x in H_q)
         
         if max_len:
             for i in range(len(H_q)):
@@ -339,11 +341,10 @@ class LlavaMetaForCausalLM(ABC):
         labels = [cur_labels[cur_attention_mask] for cur_labels, cur_attention_mask in zip(labels, attention_mask)]
 
         X_v = self.get_image_features(images, num_patches_per_image)
-        H_q = self.get_textual_tokens(input_ids, labels)
+        # using automatic max length
+        H_q = self.get_textual_tokens(input_ids, labels, max_len=0, auto_max_len=True)
         # Turn (b, n+1, 576, 1024) into n+1 tensors of (b, 576, 1024)
         X_v = torch.stack(X_v, dim=0).transpose(0, 1)
-        utils.dump_stats(X_v[:,0,0], "clip_cls")          # one CLS per image
-        utils.dump_stats(X_v[:,0,1:], "clip_patches")     # the 576 patches
         param_attn = [H_q] + list(X_v)
         patches_attn = self.atten(param_attn)[1:]
         X_v = torch.stack(patches_attn, dim=1)
