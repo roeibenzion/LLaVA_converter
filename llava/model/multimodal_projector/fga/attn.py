@@ -94,7 +94,7 @@ class Atten(nn.Module):
           and question only.
          TODO: connections between shared utils
         :param prior_flag: is prior factor provided
-        :param sizes: the spatial simension (used for batch-norm and weighted marginalization)
+        :param sizes: the spatial dimension (used for batch-norm and weighted marginalization)
         :param size_force: force spatial size with adaptive avg pooling.
         :param pairwise_flag: use pairwise interaction between utilities
         :param unary_flag: use local information

@@ -264,7 +264,7 @@ class LlavaMetaForCausalLM(ABC):
         return self.atten
     
 
-    def get_textual_tokens(self, input_ids, labels, max_len=50, auto_max_len=False):
+    def get_textual_tokens(self, input_ids, labels, max_len=50):
         '''
         provide max_len = None for no pad
         Auto max len will take the longest sequence in the batch and use it as max_len.
@@ -289,9 +289,6 @@ class LlavaMetaForCausalLM(ABC):
             cur_input_embeds = self.get_model().embed_tokens(torch.cat(cur_input_ids_noim))
             cur_input_embeds_no_im = torch.split(cur_input_embeds, split_sizes, dim=0)
             H_q.append(cur_input_embeds_no_im[-1])
-        
-        if auto_max_len:
-            max_len = max(x.shape[0] for x in H_q)
         
         if max_len:
             for i in range(len(H_q)):
@@ -342,7 +339,8 @@ class LlavaMetaForCausalLM(ABC):
 
         X_v = self.get_image_features(images, num_patches_per_image)
         # using automatic max length
-        H_q = self.get_textual_tokens(input_ids, labels, max_len=0, auto_max_len=True)
+        # TODO: Take from args model_max_length.
+        H_q = self.get_textual_tokens(input_ids, labels, 1024)
         # Turn (b, n+1, 576, 1024) into n+1 tensors of (b, 576, 1024)
         X_v = torch.stack(X_v, dim=0).transpose(0, 1)
         param_attn = [H_q] + list(X_v)
