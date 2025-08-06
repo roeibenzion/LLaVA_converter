@@ -1066,6 +1066,7 @@ def train(attn_implementation=None):
             fga = model.initialize_fga(util_e, sharing_factor, False, sizes, size_force=False, similar_modalities=similar_modalities).to(device=training_args.device)
             model.fga = fga
             if model_args.fga_pretrained:
+                print(f"Loading FGA pretrained weights from {model_args.fga_pretrained}")
                 # Pull FGA tensors (your helper)
                 fga_sd = mm_utils.separate_weights_from_bin(model_args.fga_pretrained, "atten")
 
@@ -1087,7 +1088,7 @@ def train(attn_implementation=None):
             assert any(p.requires_grad for n,p in model.named_parameters()
                 if 'atten' in n), "FGA frozen!"
         
-    print_trainable_summary(model)
+    # print_trainable_summary(model)
     assert all(not p.requires_grad for n, p in model.named_parameters()
            if 'vision_tower' in n), "Vision tower accidentally trainable!"
 
@@ -1130,6 +1131,7 @@ def train(attn_implementation=None):
     checkpoint_dirs = list(Path(training_args.output_dir).glob("checkpoint-*"))
 
     if checkpoint_dirs:
+        print(f'Found {len(checkpoint_dirs)} checkpoints in {training_args.output_dir}.')
         # Extract the checkpoint step numbers and find the max
         def get_step(path):
             try:

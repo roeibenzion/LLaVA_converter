@@ -170,6 +170,7 @@ def build_vision_projector(config, delay_load=False, **kwargs):
             # nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
             # layer.weight.data.mul_(4.0)     
             modules.append(layer)
+        print("Returning MLP projector with GELU activation")
         return nn.Sequential(*modules)
 
     if projector_type == 'identity':
