@@ -145,9 +145,7 @@ class Atten(nn.Module):
                 in combinations_with_replacement(enumerate(util_e), 2):
             # self
             if self.self_flag and idx1 == idx2 and idx1 not in self.skip_modalities:
-                print(f"creating self attention for {idx1} with embedding size {e_dim_1}")
                 self.pp_models[str(idx1)] = Pairwise(e_dim_1, sizes[idx1])
-                print(f'here is what was created: {self.pp_models[str(idx1)]}')
             else:
                 if pairwise_flag:
                     if any(idx1 in group for group in self.similar_modalities) and idx1 not in self.similar_modalities_reps.keys():

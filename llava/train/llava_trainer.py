@@ -447,7 +447,7 @@ class LLaVATrainer(Trainer):
 
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
-            self.log_optimizer_parameters(opt_model, optimizer_grouped_parameters)
+            # self.log_optimizer_parameters(opt_model, optimizer_grouped_parameters)
             self.optimizer = optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
             # for module in opt_model.modules():
             #     # if it requires grad, it should be in the optimizer
