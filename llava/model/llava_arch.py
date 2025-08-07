@@ -294,7 +294,7 @@ class LlavaMetaForCausalLM(ABC):
             for i in range(len(H_q)):
                 #NOTE: size of embedding should be the same for all samples. They did it with 21, i'll do it with more.
                 H_q[i] = F.pad(H_q[i], (0, 0, 0, max_len - H_q[i].size(0)), value=0)
-            H_q = torch.stack(H_q)
+        H_q = torch.stack(H_q)
         #(b, max,len, 4096)
         return H_q
     
